@@ -1,7 +1,10 @@
 """OlamidePanel: unprivileged hosting control-plane starter."""
-import argparse, base64, hashlib, hmac, json, os, re, secrets, shutil, sqlite3, time
+import argparse, base64, hashlib, hmac, json, os, re, secrets, shutil, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from database import connect, initialize_schema, IntegrityError
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -14,26 +17,14 @@ def allowed(user, permission):
 
 
 def db():
-    con = sqlite3.connect(DATA / 'panel.db')
-    con.row_factory = sqlite3.Row
-    return con
+    return connect()
 
 def password_hash(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
 
 def initialize():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with db() as con:
-        con.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, salt TEXT, password TEXT, role TEXT);
-CREATE TABLE IF NOT EXISTS user_ids(id INTEGER PRIMARY KEY AUTOINCREMENT);
-INSERT OR IGNORE INTO user_ids(id) SELECT id FROM users;
-CREATE TABLE IF NOT EXISTS domains(id INTEGER PRIMARY KEY, owner INTEGER, name TEXT UNIQUE, created INTEGER);
-CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actor TEXT, action TEXT, created INTEGER);''')
-        if 'active' not in [r[1] for r in con.execute('PRAGMA table_info(users)')]:
-            con.execute('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
-        for column, definition in [('email', "TEXT NOT NULL DEFAULT ''"), ('display_name', "TEXT NOT NULL DEFAULT ''"), ('session_version', 'INTEGER NOT NULL DEFAULT 0')]:
-            if column not in [r[1] for r in con.execute('PRAGMA table_info(users)')]:
-                con.execute('ALTER TABLE users ADD COLUMN '+column+' '+definition)
+    initialize_schema()
 
 def home(uid):
     path = DATA / 'homes' / str(uid)
@@ -179,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
             else: return self.reply(404,{'error':'Unknown operation'})
             with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],self.path+':'+body.get('action','create')+':target='+str(body.get('id',body.get('username','self'))),int(time.time())))
             self.reply(200,result)
-        except (ValueError, KeyError, OSError, sqlite3.IntegrityError) as e: self.reply(400,{'error':str(e)})
+        except (ValueError, KeyError, OSError, IntegrityError) as e: self.reply(400,{'error':str(e)})
 
 def create_user(username,password,role):
     if not re.fullmatch('[a-z][a-z0-9_]{2,31}',username): raise ValueError('Username must be 3–32 lowercase letters, numbers, underscores')
@@ -254,7 +245,7 @@ def provision_user(body):
             with db() as con:
                 con.execute('BEGIN IMMEDIATE')
                 if row['role']=='root' and row['active'] and (role!='root' or not active):
-                    if con.execute("SELECT COUNT(*) FROM users WHERE role='root' AND active=1").fetchone()[0]<=1:
+                    if con.execute("SELECT COUNT(*) AS total FROM users WHERE role='root' AND active=1").fetchone()['total']<=1:
                         raise ValueError('Cannot remove the last active panel root')
                 con.execute('UPDATE users SET role=?,active=?,session_version=session_version+1 WHERE id=?',(role,int(active),row['id']))
             changed=True
@@ -272,7 +263,7 @@ if __name__=='__main__':
     if args.provision_user:
         import sys
         try: print(json.dumps(provision_user(json.load(sys.stdin))))
-        except (ValueError, KeyError, sqlite3.IntegrityError):
+        except (ValueError, KeyError, IntegrityError):
             print('Invalid account configuration or protected last root',file=sys.stderr);sys.exit(1)
     elif args.create_admin:
         import getpass

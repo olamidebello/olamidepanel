@@ -6,12 +6,17 @@ set -euo pipefail
 if [[ $# != 1 || ! $1 =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+$ ]]; then echo 'Usage: install.sh panel.example.com'; exit 1; fi
 hostname_arg=$1
 [[ ! -e /etc/nginx/sites-enabled/olamidepanel ]] || { echo 'Existing panel detected; use documented update process'; exit 1; }
+[[ -r /etc/olamidepanel/database.json ]] || { echo 'Configure MySQL and /etc/olamidepanel/database.json first; see README.'; exit 1; }
 apt-get update
-apt-get install -y python3 nginx certbot python3-certbot-nginx
+apt-get install -y python3 python3-venv nginx certbot python3-certbot-nginx
 id olamidepanel >/dev/null 2>&1 || useradd --system --home-dir /var/lib/olamidepanel --shell /usr/sbin/nologin olamidepanel
 install -d -m 755 /opt/olamidepanel
 cp -r "$(dirname "$0")/../panel" /opt/olamidepanel/
+python3 -m venv /opt/olamidepanel/venv
+/opt/olamidepanel/venv/bin/pip install -r "$(dirname "$0")/../requirements.txt"
 chown -R root:root /opt/olamidepanel
+chown root:olamidepanel /etc/olamidepanel/database.json
+chmod 640 /etc/olamidepanel/database.json
 install -d -o olamidepanel -g olamidepanel -m 700 /var/lib/olamidepanel
 install -m 644 "$(dirname "$0")/olamidepanel.service" /etc/systemd/system/
 cat > /etc/nginx/sites-available/olamidepanel <<EOF
@@ -32,5 +37,5 @@ systemctl daemon-reload
 systemctl enable --now olamidepanel
 systemctl reload nginx
 certbot --nginx -d "$hostname_arg" --redirect
-runuser -u olamidepanel -- python3 /opt/olamidepanel/panel/server.py --create-admin admin
+runuser -u olamidepanel -- /opt/olamidepanel/venv/bin/python /opt/olamidepanel/panel/server.py --create-admin admin
 echo "Open https://$hostname_arg — panel foundation installed; hosting service provisioning is not implemented."

@@ -11,6 +11,21 @@ Independent Debian 12 hosting-panel foundation, inspired by the hosting-user and
 * Responsive searchable tool catalog covering all requested feature groups. Unimplemented modules are explicitly marked; no simulated success messages.
 * Nginx reverse proxy, Let's Encrypt setup, hardened unprivileged systemd service.
 
+## MySQL setup (required before installation)
+
+The runtime uses **MySQL 8.0+ / 8.4 LTS**, not SQLite. Install Oracle MySQL using its official Debian APT repository or connect to an existing MySQL server. This project does not install MariaDB as a substitute or alter your server's APT repositories. Official guide: https://dev.mysql.com/doc/mysql-apt-repo-quick-guide/en/
+
+Install `ansible-core` on your control machine, configure the inventory, and store `panel_mysql_root_password` and `panel_mysql_password` (20+ characters) in an Ansible Vault encrypted file outside the repository. Then run:
+
+```sh
+ansible-playbook -i /secure/path/panel-inventory.ini ansible/configure-mysql.yml \
+  --ask-vault-pass --ask-become-pass -e @/secure/path/mysql-vault.yml
+```
+
+This playbook requires a running local MySQL server. It creates the application database, a dedicated database user scoped to `olamidepanel.*`, a Python virtual environment, and `/etc/olamidepanel/database.json` readable only by root and the panel service group. It reconciles the database password on each run; it reports changed because provisioning SQL is executed. Restart the panel after changing credentials. Application accounts and MySQL login accounts are separate.
+
+For an existing remote MySQL server, create the database/user with the equivalent schema-scoped grants, and use `deploy/database.example.json` as the protected configuration template. Set `ssl_ca` to a trusted CA file for remote connections; certificate and hostname verification are required. `PANEL_DB_CONFIG` overrides the configuration path. Do not commit database credentials. The application database user needs SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX and REFERENCES on this database only. No global MySQL privileges or database root credentials are used by the web service.
+
 ## Debian 12 installation
 
 Use a **separate clean Debian 12 server** with root access and a hostname whose A/AAAA records point to it. Ports 80 and 443 must be reachable for certificate issuance. Do not install on your existing SIP server without reviewing conflicts and backups.
@@ -24,7 +39,7 @@ sudo bash deploy/install.sh panel.example.com
 The installer installs packages, adds a service user, copies the app to `/opt/olamidepanel`, configures a dedicated Nginx vhost, requests a certificate and prompts for the initial admin password (14+ characters). No default password is shipped. If certificate issuance fails, fix DNS/reachability, rerun `certbot --nginx -d panel.example.com --redirect`, then run the admin creation command below. Secure session cookies deliberately require HTTPS.
 
 ```sh
-sudo -u olamidepanel python3 /opt/olamidepanel/panel/server.py --create-admin admin
+sudo -u olamidepanel /opt/olamidepanel/venv/bin/python /opt/olamidepanel/panel/server.py --create-admin admin
 ```
 
 ## Local development
@@ -32,8 +47,8 @@ sudo -u olamidepanel python3 /opt/olamidepanel/panel/server.py --create-admin ad
 ```sh
 export PANEL_DATA="$PWD/.local-data"
 export PANEL_SECURE_COOKIE=0
-python3 panel/server.py --create-admin admin
-python3 panel/server.py
+/opt/olamidepanel/venv/bin/python panel/server.py --create-admin admin
+/opt/olamidepanel/venv/bin/python panel/server.py
 ```
 
 Open http://127.0.0.1:8090. Never disable secure cookies on an exposed installation.
@@ -46,7 +61,7 @@ Back up `/var/lib/olamidepanel` with the service stopped, plus the Nginx configu
 
 The UI catalog represents requested navigation, **not implemented service functionality**. Mail, DNS, virtual hosts, TLS management, SQL databases, FTP/WebDAV, Git deployments, backup restoration, cron, terminal, firewall, MFA, API tokens, package/reseller management, migrations, resource isolation, WordPress, billing and third-party products need implementation and integration tests. Legacy/vendor-specific names are references, not included software.
 
-Before production: implement per-account OS isolation and quotas, a narrowly authorized privileged job agent, durable jobs and sessions, MFA/recovery, complete audit records, backup recovery testing, concurrency/load validation and independent security review. Do not run the web process as root or add unrestricted sudo access. Current file isolation is application-level only; this is not a multi-tenant OS security boundary. SQLite and the standard-library HTTP server are suitable for this foundation, not a high-volume production deployment.
+Before production: implement per-account OS isolation and quotas, a narrowly authorized privileged job agent, durable jobs and sessions, MFA/recovery, complete audit records, backup recovery testing, concurrency/load validation and independent security review. Do not run the web process as root or add unrestricted sudo access. Current file isolation is application-level only; this is not a multi-tenant OS security boundary. The standard-library HTTP server still needs replacement and load validation before a high-volume production deployment.
 
 ## Validation
 
@@ -86,8 +101,25 @@ The playbook requires the updated application installed at `/opt/olamidepanel`, 
 
 ## Connected account and file operations
 
-Access Control → Manage opens account contact editing, password reset, session revocation and suspended-account deletion. Deletion requires the exact username, removes the account and its domain inventory, and retains its account files for operator-managed recovery. Monotonic account IDs prevent retained storage from being reassigned to another account. Session versions in SQLite invalidate access after role/password changes and revocation, including changes made through local provisioning.
+Access Control → Manage opens account contact editing, password reset, session revocation and suspended-account deletion. Deletion requires the exact username, removes the account and its domain inventory, and retains its account files for operator-managed recovery. Monotonic account IDs prevent retained storage from being reassigned to another account. Session versions in MySQL invalidate access after role/password changes and revocation, including changes made through local provisioning.
 
-Preferences → Contact Information and Password and Security are connected to the profile API. Password changes require the current password and invalidate existing sessions. File Manager includes rename, copy, and confirmed file/empty-folder deletion. Domains includes removal of inventory records. All mutations use CSRF validation and ownership/role checks. SQLite gains additive email, display-name and session-version columns automatically on startup; back up data before updating.
+Preferences → Contact Information and Password and Security are connected to the profile API. Password changes require the current password and invalidate existing sessions. File Manager includes rename, copy, and confirmed file/empty-folder deletion. Domains includes removal of inventory records. All mutations use CSRF validation and ownership/role checks. The MySQL schema includes email, display-name and session-version fields; back up data before updating.
 
 The larger cPanel checklist remains incomplete: production website/DNS/mail/database provisioning, backups, scheduled jobs, terminal, TLS automation controls and licensed integrations are still planned. No live server deployment or browser QA is claimed.
+
+## Migrate an existing SQLite installation
+
+1. Stop `olamidepanel` and back up `/var/lib/olamidepanel`, the old app, and the target MySQL database.
+2. Provision a new **empty** MySQL database and its configuration. Install `requirements.txt` into the runtime virtual environment and update the service/app files.
+3. Before creating any account in MySQL, run the importer from the checkout:
+
+```sh
+sudo -u olamidepanel /opt/olamidepanel/venv/bin/python deploy/migrate_sqlite.py /var/lib/olamidepanel/panel.db
+```
+
+4. Start the service and verify account sign-in, roles, files and domain inventory. The importer keeps account IDs, password hashes, session versions and audit entries. Account files stay in their existing homes. It never modifies the SQLite source and refuses a populated target. Row inserts are transactional; schema creation uses MySQL DDL and is separate from the import transaction. Do not rerun after a successful import.
+5. Keep the SQLite backup until verification succeeds. For rollback, stop the service and restore the old application and SQLite data together; writes made after switching to MySQL will not be reflected in that old backup.
+
+## MySQL verification
+
+Two local adapter unit tests cover parameter binding and transaction commit/rollback. Application integration tests require `PANEL_TEST_MYSQL=1` and `PANEL_DB_CONFIG` pointing to a **disposable, empty MySQL database**. They create test accounts and must never target production. GitHub Actions runs these tests with a MySQL 8.4 service. A skipped integration class is not evidence that MySQL integration passed. Live MySQL migration, Debian installation and browser QA remain unverified in the authoring workspace.

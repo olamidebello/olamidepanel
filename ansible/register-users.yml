@@ -23,7 +23,7 @@
       become_user: olamidepanel
       ansible.builtin.command:
         argv:
-          - /usr/bin/python3
+          - /opt/olamidepanel/venv/bin/python
           - /opt/olamidepanel/panel/server.py
           - --provision-user
         stdin: '{{ item | to_json }}'

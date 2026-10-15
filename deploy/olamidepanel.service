@@ -4,7 +4,8 @@ After=network.target
 [Service]
 User=olamidepanel
 Group=olamidepanel
-ExecStart=/usr/bin/python3 /opt/olamidepanel/panel/server.py
+ExecStart=/opt/olamidepanel/venv/bin/python /opt/olamidepanel/panel/server.py
+Environment=PANEL_DB_CONFIG=/etc/olamidepanel/database.json
 Environment=PANEL_DATA=/var/lib/olamidepanel
 Environment=PANEL_SECURE_COOKIE=1
 Restart=on-failure

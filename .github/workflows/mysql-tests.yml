@@ -1,0 +1,33 @@
+name: MySQL integration tests
+on: [push, pull_request]
+jobs:
+  mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-disposable-password
+          MYSQL_DATABASE: panel_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pci-only-disposable-password"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Configure disposable test database
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'panel-db.json').write_text(json.dumps({'host':'127.0.0.1','user':'root','password':'ci-only-disposable-password','database':'panel_test','port':3306}))
+          PY
+      - name: Run integration tests against MySQL
+        env:
+          PANEL_TEST_MYSQL: '1'
+          PANEL_DB_CONFIG: ${{ runner.temp }}/panel-db.json
+        run: python -m unittest discover -s tests -v

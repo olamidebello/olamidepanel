@@ -4,6 +4,7 @@ from pathlib import Path
 class PanelTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if not os.environ.get('PANEL_TEST_MYSQL'): raise unittest.SkipTest('Set PANEL_TEST_MYSQL=1 and PANEL_DB_CONFIG to a disposable MySQL database')
         cls.tmp=tempfile.TemporaryDirectory(); os.environ['PANEL_DATA']=cls.tmp.name
         spec=importlib.util.spec_from_file_location('panel',Path(__file__).parents[1]/'panel/server.py'); cls.p=importlib.util.module_from_spec(spec); spec.loader.exec_module(cls.p)
         cls.p.initialize(); cls.p.create_user('admin','a-long-test-password','admin'); cls.p.create_user('other','another-long-password','user')

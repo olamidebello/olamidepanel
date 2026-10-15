@@ -1,0 +1,72 @@
+---
+- name: Configure OlamidePanel on an existing local MySQL 8 server
+  hosts: panel_servers
+  become: true
+  vars:
+    panel_mysql_root_user: root
+    panel_mysql_socket: /var/run/mysqld/mysqld.sock
+  tasks:
+    - name: Require encrypted database passwords
+      ansible.builtin.assert:
+        that:
+          - panel_mysql_root_password is defined
+          - panel_mysql_password is defined
+          - panel_mysql_password | length >= 20
+      no_log: true
+    - name: Install MySQL driver and environment
+      ansible.builtin.apt:
+        name: [python3-venv]
+        state: present
+        update_cache: true
+    - name: Create runtime virtual environment
+      ansible.builtin.command:
+        argv: [python3, -m, venv, /opt/olamidepanel/venv]
+        creates: /opt/olamidepanel/venv/bin/python
+    - name: Install pinned runtime driver
+      ansible.builtin.pip:
+        name: PyMySQL[rsa]==1.1.2
+        virtualenv: /opt/olamidepanel/venv
+    - name: Provision database and dedicated application account
+      ansible.builtin.command:
+        argv:
+          - /opt/olamidepanel/venv/bin/python
+          - -c
+          - |
+            import json,sys,pymysql
+            v=json.load(sys.stdin)
+            c=pymysql.connect(user=v['root_user'],password=v['root_password'],unix_socket=v['socket'],autocommit=True)
+            with c.cursor() as q:
+                q.execute('SELECT VERSION()')
+                version=q.fetchone()[0]
+                if 'MariaDB' in version or int(version.split('.')[0])<8: raise SystemExit('MySQL 8 or newer required')
+                q.execute('CREATE DATABASE IF NOT EXISTS olamidepanel CHARACTER SET utf8mb4')
+                q.execute("CREATE USER IF NOT EXISTS 'olamidepanel'@'localhost' IDENTIFIED BY %s",(v['password'],))
+                q.execute("ALTER USER 'olamidepanel'@'localhost' IDENTIFIED BY %s",(v['password'],))
+                q.execute("GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON olamidepanel.* TO 'olamidepanel'@'localhost'")
+            c.close()
+        stdin: '{{ {"root_user": panel_mysql_root_user, "root_password": panel_mysql_root_password, "socket": panel_mysql_socket, "password": panel_mysql_password} | to_json }}'
+      no_log: true
+      changed_when: true
+      when: not ansible_check_mode
+    - name: Ensure dedicated panel service account
+      ansible.builtin.user:
+        name: olamidepanel
+        system: true
+        home: /var/lib/olamidepanel
+        shell: /usr/sbin/nologin
+        create_home: false
+    - name: Create configuration directory
+      ansible.builtin.file:
+        path: /etc/olamidepanel
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Write protected application configuration
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/database.json
+        content: '{{ {"unix_socket": panel_mysql_socket, "database": "olamidepanel", "user": "olamidepanel", "password": panel_mysql_password} | to_nice_json }}'
+        owner: root
+        group: olamidepanel
+        mode: '0640'
+      no_log: true
