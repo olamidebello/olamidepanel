@@ -5,8 +5,35 @@ function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefine
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':me?.csrf||''}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let d=await r.json();throw Error(d.error)}return r.status===200&&r.headers.get('Content-Type')?.includes('json')?r.json():null}
 function guard(fn){return async(...args)=>{try{$('message').textContent='';await fn(...args)}catch(e){$('message').textContent=e.message}}}
 function form(fields,submit){let f=el('form');for(const [name,type]of fields){let l=el('label',name);let i=el(type==='textarea'?'textarea':'input');i.name=name;if(type!=='textarea')i.type=type;i.required=true;l.append(i);f.append(l)}f.append(el('button','Save'));f.onsubmit=guard(async e=>{e.preventDefault();await submit(Object.fromEntries(new FormData(f)));});return f}
-function render(){let nav=$('nav');nav.replaceChildren();for(const name of ['Overview',...Object.keys(groups)].filter(n=>me?.role==='admin'||n!=='Administration')){let b=el('button',name,name===category?'active':'');b.onclick=()=>{category=name;render()};nav.append(b)}$('heading').textContent=category==='Overview'?'Hosting overview':category;$('detail').hidden=true;$('tools').replaceChildren();let entries=Object.entries(groups).filter(([g])=>(category==='Overview'||g===category)&&(me?.role==='admin'||g!=='Administration'));for(const[g,names]of entries)for(const name of names){if(!name.toLowerCase().includes($('search').value.toLowerCase()))continue;let b=el('button',undefined,'card');b.append(el('span','◇','icon'),el('h3',name),el('p',g),el('span',implemented.includes(name)?name==='Domains'?'Records only':'Available':'Not implemented',implemented.includes(name)?'badge':'badge pending'));b.onclick=guard(()=>open(name));$('tools').append(b)}}
-async function open(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:'smooth'});if(!implemented.includes(name)){d.append(el('p','This module is not implemented. No server changes are made. It requires a tested service adapter or an external licensed integration.'));return}
+let toolFilter='all';
+let favorites;
+try { favorites=JSON.parse(localStorage.getItem('olamide-favorites')||'[]'); if(!Array.isArray(favorites))favorites=[]; } catch { favorites=[]; }
+const navIcons={Overview:'◈',Files:'▤',Domains:'◎',Email:'✉',Databases:'▥',Security:'♧',Software:'⌘',Metrics:'▥',Advanced:'⌁',Preferences:'⚙',Administration:'▦',Integrations:'◇'};
+function render(){
+ let nav=$('nav');nav.replaceChildren();
+ for(const name of ['Overview',...Object.keys(groups)].filter(n=>me?.role==='admin'||n!=='Administration')){
+  let b=el('button',undefined,name===category?'active':'');b.append(el('span',navIcons[name]||'◇','nav-icon'),el('span',name));
+  b.setAttribute('aria-current',name===category?'page':'false');b.onclick=()=>{category=name;render()};nav.append(b);
+ }
+ $('heading').textContent=category==='Overview'?'Hosting overview':category;$('crumb').textContent=category;
+ $('sectionTitle').textContent=category==='Overview'?'Your hosting tools':category+' tools';
+ $('detail').hidden=true;$('tools').replaceChildren();let count=0;
+ let entries=Object.entries(groups).filter(([g])=>(category==='Overview'||g===category)&&(me?.role==='admin'||g!=='Administration'));
+ for(const[g,names]of entries)for(const name of names){
+  const available=implemented.includes(name);
+  if(!(name+' '+g).toLowerCase().includes($('search').value.toLowerCase()) || toolFilter==='available'&&!available || toolFilter==='favorites'&&!favorites.includes(name))continue;
+  count++;let card=el('article',undefined,'card'),b=el('button',undefined,'tool-open');
+  b.append(el('span',navIcons[g]||'◇','icon'),el('h3',name),el('p',g+' / '+(available?'Manage workspace':'Coming to your workspace')),el('span',available?name==='Domains'?'Inventory only':'Available':'Planned',available?'badge':'badge pending'));
+  b.onclick=guard(()=>open(name));
+  let star=el('button',favorites.includes(name)?'★':'☆','favorite');star.setAttribute('aria-label',(favorites.includes(name)?'Unpin ':'Pin ')+name);star.setAttribute('aria-pressed',String(favorites.includes(name)));
+  star.onclick=()=>{favorites=favorites.includes(name)?favorites.filter(n=>n!==name):[...favorites,name];try{localStorage.setItem('olamide-favorites',JSON.stringify(favorites))}catch{}render()};
+  card.append(b,star);$('tools').append(card);
+ }
+ $('resultCount').textContent=count+' tools';
+ if(!count)$('tools').append(el('div',toolFilter==='favorites'?'Star a tool to make it a favorite.':'No tools match. Try another search or category.','empty-state'));
+ document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.filter===toolFilter);b.setAttribute('aria-pressed',String(b.dataset.filter===toolFilter))});
+}
+async function open(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){d.append(el('p','This module is not implemented. No server changes are made. It requires a tested service adapter or an external licensed integration.'));return}
 if(name==='Domains'){d.append(el('p','Manage domain inventory. Live DNS, virtual hosts and TLS provisioning are not implemented.'));d.append(form([['name','text']],async b=>{let r=await api('domains',b);$('message').textContent=r.status;await open(name)}));for(const x of await api('domains'))d.append(el('p',x.name))}
 if(name==='File Manager'){d.append(el('p','Account files /'+cwd));if(cwd){let back=el('button','Up');back.onclick=guard(async()=>{cwd=cwd.split('/').slice(0,-1).join('/');await open(name)});d.append(back)}const files=await api('files?path='+encodeURIComponent(cwd));for(const x of files){let b=el('button',(x.directory?'▸ ':'')+x.name);b.onclick=guard(async()=>{let path=[cwd,x.name].filter(Boolean).join('/');if(x.directory){cwd=path;return open(name)}let r=await api('files?path='+encodeURIComponent(path));let f=form([['content','textarea']],async val=>{await api('files',{action:'write',path,content:val.content});$('message').textContent='File saved'});f.elements.content.value=r.content;d.append(f)});d.append(b)}d.append(el('h3','Create file'));d.append(form([['path','text'],['content','textarea']],async b=>{await api('files',{...b,path:[cwd,b.path].filter(Boolean).join('/'),action:'write'});await open(name)}));d.append(el('h3','Create folder'));d.append(form([['path','text']],async b=>{await api('files',{action:'mkdir',path:[cwd,b.path].filter(Boolean).join('/')});await open(name)}))}
 if(name==='Server Metrics')d.append(el('pre',JSON.stringify(await api('metrics'),null,2)));
@@ -14,3 +41,13 @@ if(name==='Audit Log')for(const x of await api('audit'))d.append(el('p',new Date
 if(name==='Create Panel User'){d.append(el('p','Creates a panel account with isolated panel storage. Does not create a Linux hosting account.'));d.append(form([['username','text'],['password','password']],async b=>{await api('users',{...b,role:'user'});$('message').textContent='Panel user created'}))}}
 async function start(){me=await api('me');$('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;render();let m=await api('metrics');$('metrics').replaceChildren();for(const[label,value]of [['SERVER',m.hostname],['DISK USED',(m.disk_used/2**30).toFixed(1)+' GB'],['SYSTEM LOAD',m.load[0].toFixed(2)]]){let box=el('div',undefined,'metric');box.append(el('small',label),el('strong',value),el('small','LIVE SERVER DATA'));$('metrics').append(box)}}
 $('loginForm').onsubmit=guard(async e=>{e.preventDefault();await api('login',Object.fromEntries(new FormData(e.target)));e.target.reset();await start()});$('logout').onclick=guard(async()=>{await api('logout',{});location.reload()});$('search').oninput=render;start().catch(()=>{});
+
+function setTheme(theme){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-label',theme==='dark'?'Use light theme':'Use dark theme');$('theme').setAttribute('aria-pressed',String(theme==='dark'));try{localStorage.setItem('olamide-theme',theme)}catch{}}
+let savedTheme;try{savedTheme=localStorage.getItem('olamide-theme')}catch{}
+setTheme(savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+$('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+$('help').onclick=()=>$('guide').showModal();$('closeGuide').onclick=()=>$('guide').close();
+$('quickFiles').onclick=guard(()=>open('File Manager'));$('quickDomain').onclick=guard(()=>open('Domains'));$('guideMetrics').onclick=guard(()=>open('Server Metrics'));
+$('showAvailable').onclick=()=>{category='Overview';toolFilter='available';$('search').value='';render();$('sectionTitle').scrollIntoView({block:'start'})};
+document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{toolFilter=b.dataset.filter;render()});
+document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('workspace').hidden&&!$('guide').open){e.preventDefault();$('search').focus()}});

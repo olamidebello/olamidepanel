@@ -51,3 +51,7 @@ Before production: implement per-account OS isolation and quotas, a narrowly aut
 ## Validation
 
 `python3 -m unittest discover -s tests -v`
+
+## Workspace interface
+
+The responsive dashboard includes light/dark appearance, browser-persisted favorites, availability filters, tool counts, category navigation, keyboard search (`/`), a workspace guide, quick file/domain/metrics access and accessible status messages. Theme and favorites are browser preferences, not server-side account settings. Planned tool cards describe their implementation status; they do not provision services.
