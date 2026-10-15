@@ -55,3 +55,31 @@ Before production: implement per-account OS isolation and quotas, a narrowly aut
 ## Workspace interface
 
 The responsive dashboard includes light/dark appearance, browser-persisted favorites, availability filters, tool counts, category navigation, keyboard search (`/`), a workspace guide, quick file/domain/metrics access and accessible status messages. Theme and favorites are browser preferences, not server-side account settings. Planned tool cards describe their implementation status; they do not provision services.
+
+## Super-admin access control and Ansible registration
+
+Open **Administration → Access Control** as panel root or super admin. Search accounts, assign strictly lower roles, suspend/restore accounts, register new accounts, and inspect each role's permission list. Role changes and suspension from the GUI invalidate that account's sessions. Privilege checks run on the backend, and each request rechecks the stored role and active flag. You cannot alter your own access or a peer/higher account in the GUI. Root can create additional panel-root accounts; only local provisioning can change an existing root account, and it preserves the last active root.
+
+| Role | Level | Implemented permissions |
+|---|---:|---|
+| root | 100 | Account management, audit read, own files/domains, metrics |
+| super_admin | 90 | Account management below own level, audit read, own files/domains, metrics |
+| admin | 70 | Own files/domains, metrics |
+| reseller | 50 | Own files/domains, metrics |
+| user | 20 | Own files/domains, metrics |
+| readonly | 10 | Own files/domain inventory read, metrics read |
+
+Admin/reseller levels establish the hierarchy; server management and reseller-owned customer delegation remain unimplemented. Panel root does not grant Linux root, SSH, sudo, terminal access or cross-account filesystem access. Existing `admin` accounts are not automatically elevated. New `--create-admin` bootstrap accounts use the panel `root` role. To elevate a legacy account, explicitly provision its username with `role: root` locally through the playbook.
+
+On an Ansible control machine with `ansible-core` installed, copy the sample inventory and accounts variables **outside the checkout**, replace the hostname and passwords, and encrypt the variables:
+
+```sh
+cp ansible/inventory.example.ini /secure/path/panel-inventory.ini
+cp ansible/accounts.example.yml /secure/path/panel-accounts.yml
+# Edit both files before encrypting; use unique passwords of at least 14 characters.
+ansible-vault encrypt /secure/path/panel-accounts.yml
+ansible-playbook -i /secure/path/panel-inventory.ini ansible/register-users.yml \
+  --ask-vault-pass --ask-become-pass -e @/secure/path/panel-accounts.yml
+```
+
+The playbook requires the updated application installed at `/opt/olamidepanel`, a service user named `olamidepanel`, and Debian 12. It sends account data to the local CLI through stdin with `no_log: true`; it never opens public self-registration. Repeated runs preserve passwords and report unchanged when role/active status match. Password rotation is not implemented. Account tasks skip in check mode. No Ansible execution on a Debian host or browser verification has been performed in this workspace; YAML parsing, backend integration tests and JS syntax checks were performed.

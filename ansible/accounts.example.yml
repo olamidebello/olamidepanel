@@ -1,0 +1,15 @@
+# Copy outside the repository, edit, then encrypt with ansible-vault.
+# Replace passwords before use. Existing passwords are intentionally preserved.
+panel_user_accounts:
+  - username: owner
+    role: root
+    active: true
+    password: REPLACE_WITH_UNIQUE_20_CHARACTER_PASSWORD
+  - username: operator
+    role: super_admin
+    active: true
+    password: REPLACE_WITH_ANOTHER_UNIQUE_PASSWORD
+  - username: customer
+    role: user
+    active: true
+    password: REPLACE_WITH_CUSTOMER_UNIQUE_PASSWORD

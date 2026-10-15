@@ -1,0 +1,36 @@
+---
+- name: Register OlamidePanel accounts
+  hosts: panel_servers
+  become: true
+  gather_facts: true
+  vars:
+    panel_user_accounts: []
+  tasks:
+    - name: Require Debian 12
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+    - name: Check installed panel
+      ansible.builtin.stat:
+        path: /opt/olamidepanel/panel/server.py
+      register: panel_server
+    - name: Require installed panel
+      ansible.builtin.assert:
+        that: panel_server.stat.exists
+        fail_msg: Install or update OlamidePanel before registering accounts.
+    - name: Register accounts from encrypted variables
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /opt/olamidepanel/panel/server.py
+          - --provision-user
+        stdin: '{{ item | to_json }}'
+      environment:
+        PANEL_DATA: /var/lib/olamidepanel
+      loop: '{{ panel_user_accounts }}'
+      no_log: true
+      register: panel_registration
+      changed_when: (panel_registration.stdout | from_json).changed
+      when: not ansible_check_mode

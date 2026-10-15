@@ -39,3 +39,25 @@ class PanelTest(unittest.TestCase):
         cookie,csrf=self.login();self.request('domains',{'name':'example.com'},cookie,csrf)
         self.assertEqual(json.load(self.request('domains',cookie=cookie))[0]['name'],'example.com')
         other,_=self.login('other','another-long-password');self.assertEqual(json.load(self.request('domains',cookie=other)),[])
+    def test_access_levels_and_suspension(self):
+        self.p.create_user('owner','owner-long-password','root')
+        self.p.create_user('manager','manager-long-password','super_admin')
+        cookie,csrf=self.login('manager','manager-long-password')
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.request('users',{'username':'elevated','password':'elevated-long-password','role':'root'},cookie,csrf)
+        self.assertEqual(e.exception.code,403)
+        self.request('users',{'username':'reader','password':'reader-long-password','role':'readonly'},cookie,csrf)
+        reader,reader_csrf=self.login('reader','reader-long-password')
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.request('files',{'action':'write','path':'bad','content':'bad'},reader,reader_csrf)
+        self.assertEqual(e.exception.code,403)
+        users=json.load(self.request('users',cookie=cookie)); uid=next(u['id'] for u in users if u['username']=='reader')
+        self.request('users/update',{'id':uid,'role':'readonly','active':False},cookie,csrf)
+        with self.assertRaises(urllib.error.HTTPError) as e:self.request('me',cookie=reader)
+        self.assertEqual(e.exception.code,401)
+        owner_id=next(u['id'] for u in users if u['username']=='owner')
+        with self.assertRaises(urllib.error.HTTPError):self.request('users/update',{'id':owner_id,'role':'user','active':False},cookie,csrf)
+    def test_provision_idempotent(self):
+        body={'username':'automatic','password':'automatic-long-password','role':'user','active':True}
+        self.assertTrue(self.p.provision_user(body)['changed'])
+        self.assertFalse(self.p.provision_user(body)['changed'])
