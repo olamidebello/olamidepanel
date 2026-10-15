@@ -2,6 +2,12 @@
 
 Independent Debian 12 hosting-panel foundation, inspired by the hosting-user and server-admin workflows in the supplied cPanel/WHM inventory. This is **not cPanel**, is not affiliated with cPanel, and does not reproduce its proprietary implementation or licensed add-ons. **Not production-ready or a complete cPanel replacement.**
 
+## Documentation
+
+- [User manual](docs/USER_MANUAL.md): dashboard, file/domain tasks, account preferences and super-admin controls.
+- [Setup guide](docs/SETUP_GUIDE.md): Debian 12, MySQL, HTTPS, Ansible registration, migration, upgrades and recovery.
+- [Developer guide](docs/DEVELOPER_GUIDE.md): architecture, schema, permissions, API routes and testing.
+
 ## What works
 
 * Admin and hosting-user sign-in, scrypt password hashes, one-hour sessions, CSRF checks, login throttling, secure cookies.
@@ -55,7 +61,7 @@ Open http://127.0.0.1:8090. Never disable secure cookies on an exposed installat
 
 ## Updates and backups
 
-Back up `/var/lib/olamidepanel` with the service stopped, plus the Nginx configuration and certificates, to encrypted off-server storage. To update: review the diff, stop the service, back up, copy the new `panel` directory into `/opt/olamidepanel`, keep root ownership, and restart. Sessions are in memory and expire on restart. Roll back app and data together if schemas change.
+Back up the MySQL database and `/var/lib/olamidepanel` with the service stopped, plus protected database configuration, Nginx configuration and certificates, to encrypted off-server storage. To update: review the diff, stop the service, back up, copy the new `panel` directory into `/opt/olamidepanel`, keep root ownership, and restart. Sessions are in memory and expire on restart. Roll back app and data together if schemas change.
 
 ## Remaining implementation
 
