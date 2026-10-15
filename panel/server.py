@@ -25,10 +25,15 @@ def initialize():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     with db() as con:
         con.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, salt TEXT, password TEXT, role TEXT);
+CREATE TABLE IF NOT EXISTS user_ids(id INTEGER PRIMARY KEY AUTOINCREMENT);
+INSERT OR IGNORE INTO user_ids(id) SELECT id FROM users;
 CREATE TABLE IF NOT EXISTS domains(id INTEGER PRIMARY KEY, owner INTEGER, name TEXT UNIQUE, created INTEGER);
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actor TEXT, action TEXT, created INTEGER);''')
         if 'active' not in [r[1] for r in con.execute('PRAGMA table_info(users)')]:
             con.execute('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
+        for column, definition in [('email', "TEXT NOT NULL DEFAULT ''"), ('display_name', "TEXT NOT NULL DEFAULT ''"), ('session_version', 'INTEGER NOT NULL DEFAULT 0')]:
+            if column not in [r[1] for r in con.execute('PRAGMA table_info(users)')]:
+                con.execute('ALTER TABLE users ADD COLUMN '+column+' '+definition)
 
 def home(uid):
     path = DATA / 'homes' / str(uid)
@@ -57,8 +62,8 @@ class Handler(BaseHTTPRequestHandler):
         cookie = dict(x.strip().split('=', 1) for x in self.headers.get('Cookie', '').split(';') if '=' in x)
         session = SESSIONS.get(cookie.get('panel_session', ''))
         if not session or session['expires'] <= time.time(): return None
-        with db() as con: current = con.execute('SELECT role, active FROM users WHERE id=?', (session['id'],)).fetchone()
-        if not current or not current['active']: return None
+        with db() as con: current = con.execute('SELECT role, active, session_version FROM users WHERE id=?', (session['id'],)).fetchone()
+        if not current or not current['active'] or current['session_version'] != session.get('session_version', 0): return None
         session['role'] = current['role']
         return session
     def do_GET(self):
@@ -66,11 +71,14 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
+                if self.path == '/api/profile':
+                    with db() as con: row=con.execute('SELECT username,email,display_name,role FROM users WHERE id=?',(u['id'],)).fetchone()
+                    return self.reply(200, dict(row))
                 if self.path == '/api/me': return self.reply(200, {**{k:u[k] for k in ['id','username','role','csrf']}, 'permissions':ROLE_PERMISSIONS[u['role']]})
                 if self.path == '/api/roles' and allowed(u, 'users.manage'):
                     return self.reply(200, [{'role':r,'level':v,'permissions':ROLE_PERMISSIONS[r]} for r,v in ROLE_LEVELS.items() if v <= ROLE_LEVELS[u['role']]])
                 if self.path == '/api/users' and allowed(u, 'users.manage'):
-                    with db() as con: rows=con.execute('SELECT id,username,role,active FROM users ORDER BY id').fetchall()
+                    with db() as con: rows=con.execute('SELECT id,username,role,active,email,display_name FROM users ORDER BY id').fetchall()
                     return self.reply(200, [dict(r) for r in rows])
                 if self.path == '/api/metrics':
                     usage = shutil.disk_usage(DATA)
@@ -112,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
                 token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32)
                 for old in list(SESSIONS):
                     if SESSIONS[old]['expires']<now: del SESSIONS[old]
-                SESSIONS[token]={'id':row['id'],'username':row['username'],'role':row['role'],'csrf':csrf,'expires':now+3600}
+                SESSIONS[token]={'id':row['id'],'username':row['username'],'role':row['role'],'csrf':csrf,'expires':now+3600,'session_version':row['session_version']}
                 self.send_response(200)
                 secure='; Secure' if os.environ.get('PANEL_SECURE_COOKIE','1')=='1' else ''
                 self.send_header('Set-Cookie',f'panel_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600{secure}')
@@ -140,6 +148,13 @@ class Handler(BaseHTTPRequestHandler):
                     content=body['content']
                     if len(content.encode())>1048576: raise ValueError('File limit is 1 MiB')
                     path.write_text(content); path.chmod(0o600)
+                elif action in ['rename','copy']:
+                    target=safe_path(u['id'],body['destination'])
+                    if not path.is_file() or target.exists(): raise ValueError('Choose a file and an unused destination')
+                    if action=='rename': path.rename(target)
+                    else:
+                        if path.stat().st_size>1048576: raise ValueError('Copy limit is 1 MiB')
+                        shutil.copyfile(path,target);target.chmod(0o600)
                 elif action=='delete':
                     if path.is_dir(): path.rmdir()
                     else: path.unlink()
@@ -149,10 +164,20 @@ class Handler(BaseHTTPRequestHandler):
                 role=body.get('role','user')
                 if role not in ROLE_LEVELS or ROLE_LEVELS[role] > ROLE_LEVELS[u['role']]: return self.reply(403, {'error':'Cannot grant a higher role'})
                 create_user(body['username'],body['password'],role); result={'ok':True}
+            elif self.path == '/api/domains/delete':
+                if not allowed(u, 'domains.write'): return self.reply(403, {'error':'Read-only access'})
+                with db() as con:
+                    result=con.execute('DELETE FROM domains WHERE id=? AND owner=?',(int(body['id']),u['id']))
+                    if result.rowcount!=1: raise ValueError('Unknown domain')
+                result={'ok':True}
+            elif self.path == '/api/users/action' and allowed(u, 'users.manage'):
+                manage_user(u,body);result={'ok':True}
+            elif self.path == '/api/profile':
+                update_profile(u,body);result={'ok':True}
             elif self.path == '/api/users/update' and allowed(u, 'users.manage'):
                 update_user(u, body); result={'ok':True}
             else: return self.reply(404,{'error':'Unknown operation'})
-            with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],self.path+':'+body.get('action','create'),int(time.time())))
+            with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],self.path+':'+body.get('action','create')+':target='+str(body.get('id',body.get('username','self'))),int(time.time())))
             self.reply(200,result)
         except (ValueError, KeyError, OSError, sqlite3.IntegrityError) as e: self.reply(400,{'error':str(e)})
 
@@ -161,7 +186,9 @@ def create_user(username,password,role):
     if len(password)<14: raise ValueError('Password must have at least 14 characters')
     if role not in ROLE_LEVELS: raise ValueError('Invalid role')
     salt=secrets.token_hex(16)
-    with db() as con: con.execute('INSERT INTO users(username,salt,password,role) VALUES(?,?,?,?)',(username,salt,password_hash(password,salt),role))
+    with db() as con:
+        uid=con.execute('INSERT INTO user_ids DEFAULT VALUES').lastrowid
+        con.execute('INSERT INTO users(id,username,salt,password,role) VALUES(?,?,?,?,?)',(uid,username,salt,password_hash(password,salt),role))
 
 def update_user(actor, body):
     uid=int(body['id']); role=body['role']; active=body['active']
@@ -173,9 +200,49 @@ def update_user(actor, body):
         if uid==actor['id']: raise ValueError('Use another privileged account to change your own access')
         if ROLE_LEVELS[row['role']] >= ROLE_LEVELS[actor['role']] or ROLE_LEVELS[role] >= ROLE_LEVELS[actor['role']]:
             raise ValueError('Only strictly lower access levels can be managed')
-        con.execute('UPDATE users SET role=?,active=? WHERE id=?',(role,int(active),uid))
+        con.execute('UPDATE users SET role=?,active=?,session_version=session_version+1 WHERE id=?',(role,int(active),uid))
     for token in list(SESSIONS):
         if SESSIONS[token]['id']==uid: del SESSIONS[token]
+
+def validate_contact(body):
+    email=body.get('email','').strip();name=body.get('display_name','').strip()
+    if len(email)>254 or (email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email)): raise ValueError('Invalid email address')
+    if len(name)>100: raise ValueError('Display name too long')
+    return email,name
+
+def update_profile(actor,body):
+    email,name=validate_contact(body)
+    with db() as con:
+        if body.get('password'):
+            row=con.execute('SELECT * FROM users WHERE id=?',(actor['id'],)).fetchone()
+            if not hmac.compare_digest(password_hash(body.get('current_password',''),row['salt']),row['password']): raise ValueError('Current password is incorrect')
+            if len(body['password'])<14: raise ValueError('Password must have at least 14 characters')
+            salt=secrets.token_hex(16)
+            con.execute('UPDATE users SET salt=?,password=?,session_version=session_version+1 WHERE id=?',(salt,password_hash(body['password'],salt),actor['id']))
+        con.execute('UPDATE users SET email=?,display_name=? WHERE id=?',(email,name,actor['id']))
+
+def manage_user(actor,body):
+    uid=int(body['id']); action=body['action']
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        row=con.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
+        if not row or uid==actor['id'] or ROLE_LEVELS[row['role']]>=ROLE_LEVELS[actor['role']]: raise ValueError('Only lower-level accounts may be managed')
+        if action=='profile':
+            email,name=validate_contact(body)
+            con.execute('UPDATE users SET email=?,display_name=? WHERE id=?',(email,name,uid))
+        elif action=='password':
+            password=body['password']
+            if len(password)<14: raise ValueError('Password must have at least 14 characters')
+            salt=secrets.token_hex(16)
+            con.execute('UPDATE users SET salt=?,password=?,session_version=session_version+1 WHERE id=?',(salt,password_hash(password,salt),uid))
+        elif action=='revoke_sessions': con.execute('UPDATE users SET session_version=session_version+1 WHERE id=?',(uid,))
+        elif action=='delete':
+            if row['active']: raise ValueError('Suspend the account before deletion')
+            if body.get('confirmation')!=row['username']: raise ValueError('Type the username to confirm deletion')
+            con.execute('DELETE FROM domains WHERE owner=?',(uid,))
+            con.execute('DELETE FROM users WHERE id=?',(uid,))
+            # Account files remain on disk for operator-controlled recovery/retention.
+        else: raise ValueError('Unknown account operation')
 
 def provision_user(body):
     username=body['username']; role=body.get('role','user'); active=body.get('active',True)
@@ -189,7 +256,7 @@ def provision_user(body):
                 if row['role']=='root' and row['active'] and (role!='root' or not active):
                     if con.execute("SELECT COUNT(*) FROM users WHERE role='root' AND active=1").fetchone()[0]<=1:
                         raise ValueError('Cannot remove the last active panel root')
-                con.execute('UPDATE users SET role=?,active=? WHERE id=?',(role,int(active),row['id']))
+                con.execute('UPDATE users SET role=?,active=?,session_version=session_version+1 WHERE id=?',(role,int(active),row['id']))
             changed=True
         else: changed=False
     else:

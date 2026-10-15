@@ -61,3 +61,33 @@ class PanelTest(unittest.TestCase):
         body={'username':'automatic','password':'automatic-long-password','role':'user','active':True}
         self.assertTrue(self.p.provision_user(body)['changed'])
         self.assertFalse(self.p.provision_user(body)['changed'])
+    def test_user_lifecycle(self):
+        self.p.create_user('lifecycle','lifecycle-password','user')
+        with self.p.db() as con: uid=con.execute("SELECT id FROM users WHERE username='lifecycle'").fetchone()['id']
+        actor={'id':99999,'role':'root'}
+        self.p.manage_user(actor,{'id':uid,'action':'profile','email':'person@example.com','display_name':'Person'})
+        with self.p.db() as con:self.assertEqual(con.execute('SELECT email FROM users WHERE id=?',(uid,)).fetchone()['email'],'person@example.com')
+        self.p.manage_user(actor,{'id':uid,'action':'password','password':'replacement-password'})
+        with self.p.db() as con:
+            row=con.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
+            self.assertEqual(row['password'],self.p.password_hash('replacement-password',row['salt']))
+        with self.assertRaises(ValueError):self.p.manage_user(actor,{'id':uid,'action':'delete','confirmation':'lifecycle'})
+        self.p.update_user(actor,{'id':uid,'role':'user','active':False})
+        with self.assertRaises(ValueError):self.p.manage_user(actor,{'id':uid,'action':'delete','confirmation':'wrong'})
+        self.p.manage_user(actor,{'id':uid,'action':'delete','confirmation':'lifecycle'})
+        with self.p.db() as con:self.assertIsNone(con.execute('SELECT id FROM users WHERE id=?',(uid,)).fetchone())
+    def test_account_action_cannot_target_superior(self):
+        with self.p.db() as con: uid=con.execute("SELECT id FROM users WHERE username='admin'").fetchone()['id']
+        with self.assertRaises(ValueError):self.p.manage_user({'id':9999,'role':'user'},{'id':uid,'action':'password','password':'replacement-password'})
+
+    def test_deleted_storage_never_reassigned(self):
+        self.p.create_user('retained','retained-password','user')
+        with self.p.db() as con: uid=con.execute("SELECT id FROM users WHERE username='retained'").fetchone()['id']
+        (self.p.home(uid)/'private.txt').write_text('private')
+        actor={'id':9999,'role':'root'}
+        self.p.update_user(actor,{'id':uid,'role':'user','active':False})
+        self.p.manage_user(actor,{'id':uid,'action':'delete','confirmation':'retained'})
+        self.p.create_user('newowner','newowner-password','user')
+        with self.p.db() as con: new_id=con.execute("SELECT id FROM users WHERE username='newowner'").fetchone()['id']
+        self.assertNotEqual(uid,new_id)
+        self.assertFalse((self.p.home(new_id)/'private.txt').exists())

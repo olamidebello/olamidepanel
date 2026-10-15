@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);let me,category='Overview',cwd='';
 const groups={Files:['File Manager','Images','Directory Privacy','Disk Usage','FTP Accounts','FTP Connections','Anonymous FTP','Web Disk','Git Version Control','Git Deployment','Backups','Backup Wizard','File Restoration'],Domains:['Domains','Redirects','DNS Zone Editor','Dynamic DNS','Site Publisher','Site Builder','SEO','Social Media'],Email:['Email Accounts','Forwarders','Domain Forwarders','Autoresponders','Default Address','Email Routing','Email Filters','Global Filters','Email Deliverability','Email Disk Usage','Address Importer','Archive','Mailing Lists','BoxTrapper','Greylisting','Encryption','Calendars and Contacts','Calendar Sharing','Calendar Delegation','Spam Filters','Track Delivery','Webmail'],Databases:['Database Manager','Database Users','Database Wizard','phpMyAdmin','Remote Database Access','PostgreSQL','PostgreSQL Wizard','phpPgAdmin'],Security:['SSH Access','IP Blocker','SSL/TLS','Private Keys','Certificate Signing Requests','Certificates','SSL Sites','SSL Status','AutoSSL','ModSecurity','Hotlink Protection','Leech Protection','Two-Factor Authentication','API Tokens','Security Policy'],Software:['PHP Manager','PHP-FPM','PHP INI Editor','Application Manager','Environment Variables','Application Dependencies','Optimize Website','Perl Modules','PEAR Packages','RubyGems','Ruby on Rails','Application Installer'],Metrics:['Server Metrics','Visitors','Errors','Bandwidth','Raw Access','AWStats','Analog Stats','Webalizer','FTP Statistics','Metrics Editor','Resource Usage','Site Monitoring'],Advanced:['Terminal','Cron Jobs','Track DNS','Indexes','Error Pages','Apache Handlers','MIME Types','API Shell','Virus Scanner'],Preferences:['Password and Security','Language','Contact Information','Account Preferences','User Manager','Manage Team'],Administration:['Access Control','Create Panel User','Audit Log','List Accounts','Suspended Accounts','Account Provisioning','Account Suspension','Account Termination','Shell Access','IP Assignment','Bandwidth Limits','Packages','Feature Manager','Resellers','Server Configuration','Hostname and Resolvers','IP Management','DNS Zones','DNS Templates','DNS Cluster','Configuration Cluster','Backup Configuration','Backup Restoration','Account Transfers','Apache Configuration','PHP Configuration','Mail Configuration','FTP Configuration','Service Manager','Log Rotation','Package Management','Database Services','Mail Queue','Delivery Reports','Brute Force Protection','Host Access Control','Compiler Access','Service Certificates','Process Manager','Task Queue','Service Restarts','System Reboot','Contact Manager','Hooks','Plugins','Branding','Themes and Locales','Support'],Integrations:['WP Toolkit','Softaculous','CloudLinux','LiteSpeed','JetBackup','Comet Backup','Imunify','External DNS/CDN','Billing','External Monitoring','AI Services']};
-const implemented=['Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
+const implemented=['Contact Information','Password and Security','Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':me?.csrf||''}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let d=await r.json();throw Error(d.error)}return r.status===200&&r.headers.get('Content-Type')?.includes('json')?r.json():null}
 function guard(fn){return async(...args)=>{try{$('message').textContent='';await fn(...args)}catch(e){$('message').textContent=e.message}}}
@@ -33,7 +33,7 @@ function render(){
  if(!count)$('tools').append(el('div',toolFilter==='favorites'?'Star a tool to make it a favorite.':'No tools match. Try another search or category.','empty-state'));
  document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.filter===toolFilter);b.setAttribute('aria-pressed',String(b.dataset.filter===toolFilter))});
 }
-async function open(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){d.append(el('p','This module is not implemented. No server changes are made. It requires a tested service adapter or an external licensed integration.'));return}
+async function openBase(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){d.append(el('p','This module is not implemented. No server changes are made. It requires a tested service adapter or an external licensed integration.'));return}
 if(name==='Access Control'){
  d.append(el('p','Manage panel roles and suspend or restore lower-level accounts. Panel root controls OlamidePanel permissions; Linux root privileges are not granted.'));
  const [roles,users]=await Promise.all([api('roles'),api('users')]);
@@ -47,7 +47,7 @@ if(name==='Access Control'){
   if(user.id!==me.id&&targetLevel<level){
    const select=el('select');select.setAttribute('aria-label','Role for '+user.username);for(const role of roles.filter(r=>r.level<level)){const option=el('option',role.role.replaceAll('_',' '));option.value=role.role;option.selected=role.role===user.role;select.append(option)}row.append(select);
    const save=el('button','Save role');save.onclick=guard(async()=>{await api('users/update',{id:user.id,role:select.value,active:Boolean(user.active)});await open(name)});
-   const toggle=el('button',user.active?'Suspend':'Restore');toggle.onclick=guard(async()=>{await api('users/update',{id:user.id,role:user.role,active:!user.active});await open(name)});row.append(save,toggle);
+   const toggle=el('button',user.active?'Suspend':'Restore');toggle.onclick=guard(async()=>{await api('users/update',{id:user.id,role:user.role,active:!user.active});await open(name)});const manage=el('button','Manage');manage.onclick=guard(()=>accountEditor(user));row.append(save,toggle,manage);
   }else row.append(el('span',user.id===me.id?'Your account':'Protected level','badge'));list.append(row);
  }};search.oninput=renderUsers;renderUsers();
  d.append(el('h3','Role permissions'));
@@ -76,3 +76,33 @@ $('quickFiles').onclick=guard(()=>open('File Manager'));$('quickDomain').onclick
 $('showAvailable').onclick=()=>{category='Overview';toolFilter='available';$('search').value='';render();$('sectionTitle').scrollIntoView({block:'start'})};
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{toolFilter=b.dataset.filter;render()});
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('workspace').hidden&&!$('guide').open){e.preventDefault();$('search').focus()}});
+
+async function accountEditor(user){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close account editor');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Manage '+user.username),el('p','Changes apply to this panel account. Account files are retained after deletion.'));
+ const status=el('p');status.setAttribute('role','status');const run=async body=>{try{await api('users/action',{id:user.id,...body});status.textContent='Account updated';}catch(e){status.textContent=e.message}};
+ dialog.append(el('h3','Account details'));
+ const profile=form([['display_name','text'],['email','email']],async b=>run({...b,action:'profile'}));profile.elements.display_name.required=false;profile.elements.email.required=false;profile.elements.display_name.value=user.display_name||'';profile.elements.email.value=user.email||'';dialog.append(profile);
+ dialog.append(el('h3','Set a new password'));const pw=form([['password','password']],async b=>{await run({...b,action:'password'});pw.reset()});pw.elements.password.minLength=14;dialog.append(pw);
+ const revoke=el('button','Revoke all sessions');revoke.onclick=()=>run({action:'revoke_sessions'});dialog.append(revoke);
+ if(!user.active){dialog.append(el('h3','Delete suspended account'),el('p','Type the exact username. Domain inventory is removed; files are retained for operator recovery.'));dialog.append(form([['confirmation','text']],async b=>{await run({...b,action:'delete'})}))}
+ dialog.append(status);dialog.addEventListener('close',()=>{dialog.remove();guard(()=>open('Access Control'))()});document.body.append(dialog);dialog.showModal();
+}
+async function open(name){
+ await openBase(name);const d=$('detail');
+ if(name==='Contact Information'||name==='Password and Security'){
+  d.replaceChildren(el('h2',name));const profile=await api('profile');
+  if(name==='Contact Information'){const f=form([['display_name','text'],['email','email']],async b=>{await api('profile',b);$('message').textContent='Contact information saved'});for(const field of ['display_name','email']){f.elements[field].required=false;f.elements[field].value=profile[field]||''}d.append(f)}
+  else{d.append(el('p','Use a password with at least 14 characters. Changing it signs out all sessions.'));const f=form([['current_password','password'],['password','password']],async b=>{await api('profile',{...b,email:profile.email,display_name:profile.display_name});location.reload()});f.elements.password.minLength=14;d.append(f)}
+ }
+ if(name==='Domains'&&me.permissions.includes('domains.write')){
+  d.append(el('h3','Remove domain inventory'));const list=await api('domains');for(const domain of list){let row=el('div',undefined,'account-row');row.append(el('strong',domain.name));const remove=el('button','Remove record');remove.onclick=guard(async()=>{await api('domains/delete',{id:domain.id});await open(name)});row.append(remove);d.append(row)}
+ }
+ if(name==='File Manager'&&me.permissions.includes('files.write')){
+  const files=await api('files?path='+encodeURIComponent(cwd));d.append(el('h3','File actions'),el('p','Rename, copy or remove files. Folder deletion requires an empty folder.'));
+  for(const file of files){let path=[cwd,file.name].filter(Boolean).join('/');let row=el('details');row.append(el('summary',file.name));if(!file.directory){
+   const f=form([['destination','text']],async b=>{await api('files',{action:f.elements.operation.value,path,destination:b.destination});await open(name)});const select=el('select');select.name='operation';select.setAttribute('aria-label','File operation');for(const action of ['rename','copy']){let option=el('option',action);option.value=action;select.append(option)}f.insertBefore(select,f.firstChild);f.elements.destination.value=path;row.append(f);
+  }
+  const deleteForm=form([['confirmation','text']],async b=>{if(b.confirmation!==file.name)throw Error('Type the exact file name to confirm');await api('files',{action:'delete',path});await open(name)});deleteForm.firstElementChild.firstChild.textContent='Type '+file.name+' to delete';deleteForm.lastElementChild.textContent='Delete';row.append(deleteForm);d.append(row);
+  }
+ }
+}

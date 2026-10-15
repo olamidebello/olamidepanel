@@ -83,3 +83,11 @@ ansible-playbook -i /secure/path/panel-inventory.ini ansible/register-users.yml 
 ```
 
 The playbook requires the updated application installed at `/opt/olamidepanel`, a service user named `olamidepanel`, and Debian 12. It sends account data to the local CLI through stdin with `no_log: true`; it never opens public self-registration. Repeated runs preserve passwords and report unchanged when role/active status match. Password rotation is not implemented. Account tasks skip in check mode. No Ansible execution on a Debian host or browser verification has been performed in this workspace; YAML parsing, backend integration tests and JS syntax checks were performed.
+
+## Connected account and file operations
+
+Access Control → Manage opens account contact editing, password reset, session revocation and suspended-account deletion. Deletion requires the exact username, removes the account and its domain inventory, and retains its account files for operator-managed recovery. Monotonic account IDs prevent retained storage from being reassigned to another account. Session versions in SQLite invalidate access after role/password changes and revocation, including changes made through local provisioning.
+
+Preferences → Contact Information and Password and Security are connected to the profile API. Password changes require the current password and invalidate existing sessions. File Manager includes rename, copy, and confirmed file/empty-folder deletion. Domains includes removal of inventory records. All mutations use CSRF validation and ownership/role checks. SQLite gains additive email, display-name and session-version columns automatically on startup; back up data before updating.
+
+The larger cPanel checklist remains incomplete: production website/DNS/mail/database provisioning, backups, scheduled jobs, terminal, TLS automation controls and licensed integrations are still planned. No live server deployment or browser QA is claimed.
