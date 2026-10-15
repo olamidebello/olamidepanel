@@ -1,0 +1,19 @@
+[Unit]
+Description=OlamidePanel control plane
+After=network.target
+[Service]
+User=olamidepanel
+Group=olamidepanel
+ExecStart=/usr/bin/python3 /opt/olamidepanel/panel/server.py
+Environment=PANEL_DATA=/var/lib/olamidepanel
+Environment=PANEL_SECURE_COOKIE=1
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/olamidepanel
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+[Install]
+WantedBy=multi-user.target
