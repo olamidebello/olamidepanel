@@ -1,0 +1,9 @@
+# Copy outside the repository, replace every placeholder and encrypt with ansible-vault.
+panel_hostname: hosting.dobhrap.com
+panel_acme_email: operator@example.com
+panel_mysql_root_password: REPLACE_WITH_UNIQUE_MYSQL_ROOT_PASSWORD_20_PLUS
+panel_mysql_password: REPLACE_WITH_UNIQUE_APPLICATION_PASSWORD_20_PLUS
+panel_admin_username: owner
+panel_admin_password: REPLACE_WITH_UNIQUE_PANEL_PASSWORD_14_PLUS
+# Pin a reviewed release tag or commit for repeatable deployment; main tracks current code.
+panel_revision: main

@@ -1,0 +1,250 @@
+---
+- name: Bootstrap a bare Debian 12 host with Oracle MySQL
+  hosts: panel_servers
+  become: true
+  gather_facts: true
+  vars:
+    panel_mysql_key_url: https://repo.mysql.com/RPM-GPG-KEY-mysql-2025
+  pre_tasks:
+    - name: Validate platform and required deployment values
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - ansible_architecture == 'x86_64'
+          - panel_hostname is defined
+          - panel_hostname is match('^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$')
+          - panel_acme_email is defined
+          - panel_acme_email is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
+          - panel_mysql_root_password is defined
+          - panel_mysql_root_password | length >= 20
+          - panel_mysql_password is defined
+          - panel_mysql_password | length >= 20
+          - panel_admin_username is defined
+          - panel_admin_username is match('^[a-z][a-z0-9_]{2,31}$')
+          - panel_admin_password is defined
+          - panel_admin_password | length >= 14
+        fail_msg: Provide valid hostname, ACME email and encrypted database/admin credentials on Debian 12 amd64.
+      no_log: true
+    - name: Inspect existing MySQL data
+      ansible.builtin.stat:
+        path: /var/lib/mysql/mysql
+      register: existing_mysql
+    - name: Inspect managed-install marker
+      ansible.builtin.stat:
+        path: /etc/olamidepanel/bare-install-managed
+      register: managed_install
+    - name: Protect unrelated existing MySQL installations
+      ansible.builtin.assert:
+        that: not existing_mysql.stat.exists or managed_install.stat.exists
+        fail_msg: Existing MySQL is not managed by this playbook. Use the existing-server setup guide instead.
+  tasks:
+    - name: Install base dependencies
+      ansible.builtin.apt:
+        name: [acl, ca-certificates, curl, gnupg, git, python3, python3-venv, nginx, certbot, python3-certbot-nginx]
+        update_cache: true
+        state: present
+    - name: Download Oracle repository signing key
+      ansible.builtin.get_url:
+        url: '{{ panel_mysql_key_url }}'
+        dest: /usr/share/keyrings/olamide-mysql.asc
+        mode: '0644'
+        force: false
+    - name: Configure signed Oracle MySQL 8.4 LTS repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64 signed-by=/usr/share/keyrings/olamide-mysql.asc] https://repo.mysql.com/apt/debian/ bookworm mysql-8.4-lts
+        filename: olamide-mysql
+        state: present
+        update_cache: true
+    - name: Set fresh MySQL root-password installer answers
+      ansible.builtin.debconf:
+        name: mysql-community-server
+        question: '{{ item }}'
+        value: '{{ panel_mysql_root_password }}'
+        vtype: password
+      loop:
+        - mysql-community-server/root-pass
+        - mysql-community-server/re-root-pass
+      no_log: true
+      when: not existing_mysql.stat.exists
+    - name: Install Oracle MySQL server
+      ansible.builtin.apt:
+        name: mysql-server
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+    - name: Bind MySQL to loopback
+      ansible.builtin.copy:
+        dest: /etc/mysql/mysql.conf.d/olamide-network.cnf
+        content: |
+          [mysqld]
+          bind-address=127.0.0.1
+          mysqlx-bind-address=127.0.0.1
+        mode: '0644'
+      notify: Restart MySQL
+    - name: Enable MySQL service
+      ansible.builtin.systemd:
+        name: mysql
+        enabled: true
+        state: started
+    - name: Apply MySQL configuration
+      ansible.builtin.meta: flush_handlers
+    - name: Wait for local MySQL
+      ansible.builtin.wait_for:
+        port: 3306
+        host: 127.0.0.1
+        timeout: 60
+    - name: Create deployment directories
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: [/etc/olamidepanel, /opt/olamidepanel]
+    - name: Record managed bootstrap
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/bare-install-managed
+        content: "OlamidePanel bare Debian 12 bootstrap\n"
+        force: false
+        mode: '0600'
+  handlers:
+    - name: Restart MySQL
+      ansible.builtin.systemd:
+        name: mysql
+        state: restarted
+
+- name: Provision the application database
+  ansible.builtin.import_playbook: configure-mysql.yml
+
+- name: Deploy OlamidePanel and enable HTTPS
+  hosts: panel_servers
+  become: true
+  vars:
+    panel_revision: main
+    panel_repository: https://github.com/olamidebello/olamidepanel.git
+  tasks:
+    - name: Checkout application source without discarding local changes
+      ansible.builtin.git:
+        repo: '{{ panel_repository }}'
+        dest: /opt/olamidepanel/repo
+        version: '{{ panel_revision }}'
+        force: false
+      notify: Restart panel
+    - name: Install application files
+      ansible.builtin.copy:
+        src: /opt/olamidepanel/repo/panel/
+        dest: /opt/olamidepanel/panel/
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+      notify: Restart panel
+    - name: Install application requirements
+      ansible.builtin.pip:
+        requirements: /opt/olamidepanel/repo/requirements.txt
+        virtualenv: /opt/olamidepanel/venv
+      notify: Restart panel
+    - name: Create private account storage
+      ansible.builtin.file:
+        path: /var/lib/olamidepanel
+        state: directory
+        owner: olamidepanel
+        group: olamidepanel
+        mode: '0700'
+    - name: Install hardened service unit
+      ansible.builtin.copy:
+        src: /opt/olamidepanel/repo/deploy/olamidepanel.service
+        dest: /etc/systemd/system/olamidepanel.service
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart panel
+    - name: Initialize schema and register initial panel root
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/panel/server.py, --provision-user]
+        stdin: '{{ {"username": panel_admin_username, "password": panel_admin_password, "role": "root", "active": true} | to_json }}'
+      register: bootstrap_account
+      changed_when: (bootstrap_account.stdout | from_json).changed
+      no_log: true
+      when: not ansible_check_mode
+    - name: Create initial Nginx virtual host without overwriting issued TLS configuration
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/olamidepanel
+        force: false
+        mode: '0644'
+        content: |
+          server {
+            listen 80;
+            server_name {{ panel_hostname }};
+            client_max_body_size 2m;
+            location / {
+              proxy_pass http://127.0.0.1:8090;
+              proxy_set_header Host $host;
+              proxy_set_header X-Forwarded-Proto $scheme;
+            }
+          }
+      notify: Reload Nginx
+    - name: Enable panel virtual host
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/olamidepanel
+        dest: /etc/nginx/sites-enabled/olamidepanel
+        state: link
+      notify: Reload Nginx
+    - name: Validate Nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Enable application and Nginx services
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: started
+        enabled: true
+        daemon_reload: true
+      loop: [olamidepanel, nginx]
+    - name: Apply service updates before checking readiness
+      ansible.builtin.meta: flush_handlers
+    - name: Check backend responds
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/
+        status_code: 200
+      register: backend_ready
+      retries: 6
+      delay: 2
+      until: backend_ready.status == 200
+    - name: Obtain certificate and enable HTTP to HTTPS redirect
+      ansible.builtin.command:
+        argv:
+          - certbot
+          - --nginx
+          - --non-interactive
+          - --agree-tos
+          - --email
+          - '{{ panel_acme_email }}'
+          - -d
+          - '{{ panel_hostname }}'
+          - --redirect
+        creates: '/etc/letsencrypt/live/{{ panel_hostname }}/fullchain.pem'
+    - name: Enable certificate renewal timer
+      ansible.builtin.systemd:
+        name: certbot.timer
+        enabled: true
+        state: started
+    - name: Verify HTTPS locally with hostname and certificate validation
+      ansible.builtin.command:
+        argv: [curl, --fail, --silent, --show-error, --resolve, '{{ panel_hostname }}:443:127.0.0.1', 'https://{{ panel_hostname }}/', -o, /dev/null]
+      changed_when: false
+    - name: Show deployed URL
+      ansible.builtin.debug:
+        msg: 'OlamidePanel deployed at https://{{ panel_hostname }}. Planned hosting modules remain unimplemented.'
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted
+        daemon_reload: true
+    - name: Reload Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

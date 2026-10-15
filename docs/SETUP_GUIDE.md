@@ -177,3 +177,42 @@ To restore: stop the service, restore the matching database/files/app version an
 | Planned module does nothing | It has no service adapter yet; see the developer guide |
 
 Current operation limits include memory-only sessions, a coarse login throttle behind Nginx, no total disk quotas, no public hosting-service provisioning, incomplete audit/error coverage and application-level file isolation. Track these before expanding production exposure.
+
+## 11. Automatic bare-server installation
+
+`ansible/deploy-bare-debian12.yml` installs dependencies and Oracle MySQL 8.4 from its signed Debian repository, provisions the application database, clones this repository, installs the runtime/service, creates a panel-root account and configures Nginx/Let's Encrypt. It targets Debian 12 amd64. It refuses an unrelated pre-existing MySQL data directory. It does not enable unfinished hosting modules.
+
+For server `181.214.149.146`, the example hostname is `hosting.dobhrap.com`. Confirm its A record resolves to that IP and inbound 80/443 work before certificate issuance. The inventory is prefilled with that IP; it contains no password. Establish and verify SSH host trust separately before remote execution.
+
+To run directly from an already-authenticated root SSH shell on the bare server:
+
+```sh
+apt-get update
+apt-get install -y git ansible python3-venv
+cd /root
+git clone https://github.com/olamidebello/olamidepanel.git
+cd /root/olamidepanel
+install -d -m 700 /root/olamidepanel-private
+install -m 600 ansible/bare-server.example.yml /root/olamidepanel-private/deploy-vault.yml
+nano /root/olamidepanel-private/deploy-vault.yml
+ansible-vault encrypt /root/olamidepanel-private/deploy-vault.yml
+```
+
+Then create the local inventory and start deployment (the playbooks require the `panel_servers` group):
+
+```sh
+printf '[panel_servers]\nlocalhost ansible_connection=local\n' > /root/olamidepanel-private/local.ini
+ansible-playbook -i /root/olamidepanel-private/local.ini \
+  ansible/deploy-bare-debian12.yml --ask-vault-pass \
+  -e @/root/olamidepanel-private/deploy-vault.yml
+```
+
+Replace **every** placeholder password and the ACME contact email before encryption. The hostname is prefilled as hosting.dobhrap.com. The initial panel username is owner; it receives the root panel role. Do not commit the private directory. Existing account passwords are preserved on repeat runs. Account bootstrapping reconciles role/active status; keep bootstrap variables under trusted operator control.
+
+From another control machine, use `ansible/bare-server.inventory.example.ini` (or a private copy), SSH key access and the same encrypted variables. Add `--ask-pass` for SSH password authentication if required; some control-machine Ansible versions also require sshpass. Add `--ask-become-pass` for a non-root SSH user needing sudo.
+
+Reruns retain an already-issued Nginx TLS configuration and reconcile the application. Keep hostname stable: changing it after first deployment requires a deliberate vhost/certificate migration because the initial vhost is not overwritten. Set panel_revision to a reviewed commit for repeatability. This is not a zero-downtime upgrade/rollback system; take the database/files/app backups described above first.
+
+An interrupted MySQL install before the managed marker is recorded may be refused on the next run. Inspect the partial install and verify ownership before operator recovery; never remove MySQL data to force a rerun. Repository-key expiration/signature failures must be resolved using current Oracle key information, not by disabling package signature checks. Certificate failure leaves the application installed but HTTPS readiness incomplete; correct DNS/reachability and rerun. Renewal runs through certbot.timer. The HTTPS verification validates the certificate and hostname against the local server.
+
+This automation does not change SSH or firewall rules. Configure provider/host firewall reachability separately. Fresh-host check mode is not a deployment simulation: later tasks depend on files/packages that earlier check-mode tasks do not create.

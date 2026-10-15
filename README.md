@@ -17,6 +17,10 @@ Independent Debian 12 hosting-panel foundation, inspired by the hosting-user and
 * Responsive searchable tool catalog covering all requested feature groups. Unimplemented modules are explicitly marked; no simulated success messages.
 * Nginx reverse proxy, Let's Encrypt setup, hardened unprivileged systemd service.
 
+## Automated bare Debian 12 deployment
+
+Use [the bare-server setup instructions](docs/SETUP_GUIDE.md#11-automatic-bare-server-installation) and `ansible/deploy-bare-debian12.yml` for a fresh Debian 12 amd64 server. It installs Oracle MySQL, Python dependencies, Git, Nginx and HTTPS, then deploys the application and bootstrap panel-root account. Example inventory targets `181.214.149.146`; example hostname is `hosting.dobhrap.com`. Encrypted variables are required for database/admin passwords. This automation has not yet been executed on the live server.
+
 ## MySQL setup (required before installation)
 
 The runtime uses **MySQL 8.0+ / 8.4 LTS**, not SQLite. Install Oracle MySQL using its official Debian APT repository or connect to an existing MySQL server. This project does not install MariaDB as a substitute or alter your server's APT repositories. Official guide: https://dev.mysql.com/doc/mysql-apt-repo-quick-guide/en/
