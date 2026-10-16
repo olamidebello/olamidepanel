@@ -28,3 +28,11 @@ CREATE TABLE IF NOT EXISTS audit (
  INDEX audit_created (created)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT IGNORE INTO user_ids(id) SELECT id FROM users;
+
+CREATE TABLE IF NOT EXISTS legal_acceptances (
+ user_id BIGINT NOT NULL,
+ version VARCHAR(32) NOT NULL,
+ accepted_at BIGINT NOT NULL,
+ PRIMARY KEY (user_id,version),
+ CONSTRAINT legal_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

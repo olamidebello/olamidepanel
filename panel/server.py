@@ -8,6 +8,7 @@ from database import connect, initialize_schema, IntegrityError
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
+TERMS_VERSION = '2026-10-15'
 SESSIONS = {}
 ROLE_LEVELS = {'root':100, 'super_admin':90, 'admin':70, 'reseller':50, 'user':20, 'readonly':10}
 ROLE_PERMISSIONS = {role: ['files.read', 'domains.read', 'metrics.read'] + (['files.write', 'domains.write'] if level >= 20 else []) + (['users.manage', 'audit.read'] if level >= 90 else []) for role, level in ROLE_LEVELS.items()}
@@ -86,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
                     with db() as con: rows=con.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100').fetchall()
                     return self.reply(200,[dict(x) for x in rows])
                 return self.reply(404, {'error':'Unknown operation'})
-            name = {'/':'index.html','/app.js':'app.js','/style.css':'style.css'}.get(self.path)
+            name = {'/':'index.html','/app.js':'app.js','/style.css':'style.css','/terms':'terms.html','/privacy':'privacy.html','/copyright':'copyright.html'}.get(self.path)
             if not name: return self.reply(404, {'error':'Not found'})
             payload=(STATIC/name).read_bytes()
             self.send_response(200)
@@ -108,6 +109,9 @@ class Handler(BaseHTTPRequestHandler):
                 with db() as con: row=con.execute('SELECT * FROM users WHERE username=?',(body.get('username',''),)).fetchone()
                 digest=password_hash(body.get('password',''),row['salt'] if row else '00'*16)
                 if not row or not row['active'] or not hmac.compare_digest(digest,row['password']): return self.reply(401,{'error':'Invalid credentials'})
+                if body.get('accept_terms') is not True: return self.reply(400, {'error':'Confirm the Terms and acknowledge the Privacy Notice to sign in'})
+                with db() as con:
+                    con.execute('INSERT INTO legal_acceptances(user_id,version,accepted_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE accepted_at=VALUES(accepted_at)',(row['id'],TERMS_VERSION,int(now)))
                 token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32)
                 for old in list(SESSIONS):
                     if SESSIONS[old]['expires']<now: del SESSIONS[old]

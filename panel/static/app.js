@@ -65,7 +65,7 @@ async function userRegistration(){
  for(const role of roles){let option=el('option',role.role.replaceAll('_',' '));option.value=role.role;option.selected=role.role==='user';select.append(option)}label.append(select);f.insertBefore(label,f.lastElementChild);f.elements.password.minLength=14;return f;
 }
 async function start(){me=await api('me');$('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;render();let m=await api('metrics');$('metrics').replaceChildren();for(const[label,value]of [['SERVER',m.hostname],['DISK USED',(m.disk_used/2**30).toFixed(1)+' GB'],['SYSTEM LOAD',m.load[0].toFixed(2)]]){let box=el('div',undefined,'metric');box.append(el('small',label),el('strong',value),el('small','LIVE SERVER DATA'));$('metrics').append(box)}}
-$('loginForm').onsubmit=guard(async e=>{e.preventDefault();await api('login',Object.fromEntries(new FormData(e.target)));e.target.reset();await start()});$('logout').onclick=guard(async()=>{await api('logout',{});location.reload()});$('search').oninput=render;start().catch(()=>{});
+$('loginForm').onsubmit=guard(async e=>{e.preventDefault();await api('login',{...Object.fromEntries(new FormData(e.target)),accept_terms:e.target.elements.accept_terms.checked});e.target.reset();await start()});$('logout').onclick=guard(async()=>{await api('logout',{});location.reload()});$('search').oninput=render;start().catch(()=>{});
 
 function setTheme(theme){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-label',theme==='dark'?'Use light theme':'Use dark theme');$('theme').setAttribute('aria-pressed',String(theme==='dark'));try{localStorage.setItem('olamide-theme',theme)}catch{}}
 let savedTheme;try{savedTheme=localStorage.getItem('olamide-theme')}catch{}

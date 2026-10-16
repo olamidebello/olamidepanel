@@ -133,3 +133,7 @@ sudo -u olamidepanel /opt/olamidepanel/venv/bin/python deploy/migrate_sqlite.py 
 ## MySQL verification
 
 Two local adapter unit tests cover parameter binding and transaction commit/rollback. Application integration tests require `PANEL_TEST_MYSQL=1` and `PANEL_DB_CONFIG` pointing to a **disposable, empty MySQL database**. They create test accounts and must never target production. GitHub Actions runs these tests with a MySQL 8.4 service. A skipped integration class is not evidence that MySQL integration passed. Live MySQL migration, Debian installation and browser QA remain unverified in the authoring workspace.
+
+## Terms, privacy and copyright
+
+Public Terms and Conditions, Privacy Notice and Copyright pages are linked in the login/footer. Sign-in requires terms agreement and privacy acknowledgment; the backend records the current version and latest acceptance timestamp in MySQL. Read [operator legal review notes](docs/LEGAL_REVIEW.md) before public/commercial use. These drafts describe the current foundation and need operator-specific legal review.

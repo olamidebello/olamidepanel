@@ -16,7 +16,7 @@ class PanelTest(unittest.TestCase):
         r=urllib.request.Request(self.url+'/api/'+path,data=json.dumps(data).encode() if data is not None else None,headers={'Cookie':cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'})
         return urllib.request.urlopen(r)
     def login(self,name='admin',password='a-long-test-password'):
-        r=self.request('login',{'username':name,'password':password}); cookie=r.headers['Set-Cookie'].split(';')[0]
+        r=self.request('login',{'username':name,'password':password,'accept_terms':True}); cookie=r.headers['Set-Cookie'].split(';')[0]
         return cookie,json.load(self.request('me',cookie=cookie))['csrf']
     def test_auth_required(self):
         with self.assertRaises(urllib.error.HTTPError) as e:self.request('metrics')
@@ -92,3 +92,12 @@ class PanelTest(unittest.TestCase):
         with self.p.db() as con: new_id=con.execute("SELECT id FROM users WHERE username='newowner'").fetchone()['id']
         self.assertNotEqual(uid,new_id)
         self.assertFalse((self.p.home(new_id)/'private.txt').exists())
+    def test_login_requires_terms_confirmation(self):
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.request('login',{'username':'admin','password':'a-long-test-password'})
+        self.assertEqual(e.exception.code,400)
+    def test_legal_pages_public(self):
+        for path in ['/terms','/privacy','/copyright']:
+            with urllib.request.urlopen(self.url+path) as response:
+                self.assertEqual(response.status,200)
+                self.assertIn(b'OlamidePanel',response.read())
