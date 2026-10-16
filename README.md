@@ -137,3 +137,9 @@ Two local adapter unit tests cover parameter binding and transaction commit/roll
 ## Terms, privacy and copyright
 
 Public Terms and Conditions, Privacy Notice and Copyright pages are linked in the login/footer. Sign-in requires terms agreement and privacy acknowledgment; the backend records the current version and latest acceptance timestamp in MySQL. Read [operator legal review notes](docs/LEGAL_REVIEW.md) before public/commercial use. These drafts describe the current foundation and need operator-specific legal review.
+
+## Hosting marketplace
+
+[Marketplace guide](docs/MARKETPLACE_GUIDE.md): customer/operator dashboards, editable plan catalog, illustrative Starter/Business/Growth templates, published-plan search, confirmed order requests, status tracking, manual approval/rejection and pending cancellation. Plans and orders are stored in MySQL with role/ownership checks, price snapshots and retry idempotency. Payments, customer hosting provisioning, resource enforcement, billing and renewals are not implemented.
+
+Reseller storefronts are supported through super-admin publishing approval, seller-owned catalog editing, seller-scoped order review and hosting/reseller plan categories. See the marketplace guide for sample reseller templates and exact authorization boundaries. These controls do not grant hosting-service provisioning, payment processing or reseller Linux-account delegation.

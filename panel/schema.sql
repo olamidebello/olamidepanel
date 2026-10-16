@@ -36,3 +36,42 @@ CREATE TABLE IF NOT EXISTS legal_acceptances (
  PRIMARY KEY (user_id,version),
  CONSTRAINT legal_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS marketplace_vendors (
+ user_id BIGINT NOT NULL PRIMARY KEY,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE,
+ CONSTRAINT vendor_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS hosting_plans (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ seller_id BIGINT NOT NULL DEFAULT 0,
+ plan_kind VARCHAR(16) NOT NULL DEFAULT 'hosting',
+ name VARCHAR(80) NOT NULL,
+ description TEXT NOT NULL,
+ price_cents BIGINT NOT NULL,
+ currency CHAR(3) NOT NULL DEFAULT 'USD',
+ interval_name VARCHAR(16) NOT NULL DEFAULT 'monthly',
+ disk_gb INT NOT NULL,
+ bandwidth_gb INT NOT NULL,
+ websites INT NOT NULL,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE,
+ featured BOOLEAN NOT NULL DEFAULT FALSE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS hosting_orders (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ owner BIGINT NOT NULL,
+ seller_id BIGINT NOT NULL DEFAULT 0,
+ plan_id BIGINT NOT NULL,
+ request_key VARCHAR(64) CHARACTER SET ascii NOT NULL,
+ plan_snapshot TEXT NOT NULL,
+ price_cents BIGINT NOT NULL,
+ currency CHAR(3) NOT NULL,
+ status VARCHAR(20) NOT NULL,
+ note TEXT NOT NULL,
+ operator_note TEXT,
+ created BIGINT NOT NULL,
+ updated BIGINT NOT NULL,
+ UNIQUE KEY order_request (owner,request_key),
+ INDEX order_status (status),
+ CONSTRAINT order_owner FOREIGN KEY (owner) REFERENCES users(id) ON DELETE CASCADE,
+ CONSTRAINT order_plan FOREIGN KEY (plan_id) REFERENCES hosting_plans(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

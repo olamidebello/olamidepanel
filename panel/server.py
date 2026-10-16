@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from database import connect, initialize_schema, IntegrityError
+import marketplace
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -63,6 +64,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
+                if self.path.startswith('/api/marketplace/'):
+                    status,value=marketplace.handle('GET',self.path,u)
+                    return self.reply(status,value)
                 if self.path == '/api/profile':
                     with db() as con: row=con.execute('SELECT username,email,display_name,role FROM users WHERE id=?',(u['id'],)).fetchone()
                     return self.reply(200, dict(row))
@@ -123,6 +127,9 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path.startswith('/api/marketplace/'):
+                status,value=marketplace.handle('POST',self.path,u,body)
+                return self.reply(status,value)
             if self.path == '/api/logout':
                 for token in list(SESSIONS):
                     if SESSIONS[token] is u: del SESSIONS[token]

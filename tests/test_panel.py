@@ -101,3 +101,47 @@ class PanelTest(unittest.TestCase):
             with urllib.request.urlopen(self.url+path) as response:
                 self.assertEqual(response.status,200)
                 self.assertIn(b'OlamidePanel',response.read())
+    def test_marketplace_order_lifecycle(self):
+        import marketplace
+        with self.p.db() as con:
+            uid=con.execute("SELECT id FROM users WHERE username='other'").fetchone()['id']
+        admin={'id':999,'role':'root','username':'test-owner'}
+        user={'id':uid,'role':'user','username':'other'}
+        body={'name':'Test plan','description':'Integration test','price_cents':1500,'disk_gb':30,'bandwidth_gb':500,'websites':5,'enabled':True,'featured':False}
+        status,result=marketplace.handle('POST','/api/marketplace/plans/save',admin,body)
+        self.assertEqual(status,200);pid=result['id']
+        request={'plan_id':pid,'expected_price_cents':1500,'request_key':'integration-request-0001','confirmed':True,'note':'Example'}
+        _,order=marketplace.handle('POST','/api/marketplace/orders/create',user,request)
+        _,again=marketplace.handle('POST','/api/marketplace/orders/create',user,request)
+        self.assertEqual(order['id'],again['id']);self.assertTrue(again['duplicate'])
+        with self.assertRaises(ValueError):marketplace.handle('POST','/api/marketplace/orders/create',user,{**request,'request_key':'integration-request-0002','expected_price_cents':100})
+        _,approved=marketplace.handle('POST','/api/marketplace/orders/action',admin,{'id':order['id'],'action':'approve','operator_note':'Manual follow-up'})
+        self.assertEqual(approved['status'],'approved')
+        with self.assertRaises(ValueError):marketplace.handle('POST','/api/marketplace/orders/action',user,{'id':order['id'],'action':'cancel'})
+        with self.p.db() as con:
+            saved=con.execute('SELECT * FROM hosting_orders WHERE id=?',(order['id'],)).fetchone()
+            self.assertIn('Test plan',saved['plan_snapshot'])
+    def test_reseller_catalog_isolation(self):
+        import marketplace
+        for name in ['sellerone','sellertwo','shopbuyer']:
+            self.p.create_user(name,'a-reseller-test-password','reseller' if name!='shopbuyer' else 'user')
+        with self.p.db() as con:
+            rows=con.execute("SELECT id,username,role FROM users WHERE username IN ('sellerone','sellertwo','shopbuyer')").fetchall()
+        users={row['username']:dict(row) for row in rows}
+        admin={'id':999,'role':'root','username':'test-operator'}
+        plan={'name':'Reseller test','description':'Test allocation','price_cents':2500,'disk_gb':50,'bandwidth_gb':500,'websites':20,'enabled':True,'featured':False,'plan_kind':'reseller'}
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/plans/save',users['sellerone'],plan)[0],403)
+        for name in ['sellerone','sellertwo']:
+            marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':users[name]['id'],'enabled':True})
+        _,created=marketplace.handle('POST','/api/marketplace/plans/save',users['sellerone'],plan)
+        pid=created['id']
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/plans/save',users['sellertwo'],{**plan,'id':pid})[0],403)
+        _,order=marketplace.handle('POST','/api/marketplace/orders/create',users['shopbuyer'],{'plan_id':pid,'expected_price_cents':2500,'request_key':'reseller-order-0001','confirmed':True})
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/orders/action',users['sellertwo'],{'id':order['id'],'action':'approve'})[0],404)
+        marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':users['sellerone']['id'],'enabled':False})
+        _,visible=marketplace.handle('GET','/api/marketplace/plans',users['shopbuyer'])
+        self.assertNotIn(pid,[p['id'] for p in visible])
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/orders/action',users['sellerone'],{'id':order['id'],'action':'approve'})[0],404)
+        marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':users['sellerone']['id'],'enabled':True})
+        _,approved=marketplace.handle('POST','/api/marketplace/orders/action',users['sellerone'],{'id':order['id'],'action':'approve'})
+        self.assertEqual(approved['status'],'approved')

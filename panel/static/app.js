@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);let me,category='Overview',cwd='';
-const groups={Files:['File Manager','Images','Directory Privacy','Disk Usage','FTP Accounts','FTP Connections','Anonymous FTP','Web Disk','Git Version Control','Git Deployment','Backups','Backup Wizard','File Restoration'],Domains:['Domains','Redirects','DNS Zone Editor','Dynamic DNS','Site Publisher','Site Builder','SEO','Social Media'],Email:['Email Accounts','Forwarders','Domain Forwarders','Autoresponders','Default Address','Email Routing','Email Filters','Global Filters','Email Deliverability','Email Disk Usage','Address Importer','Archive','Mailing Lists','BoxTrapper','Greylisting','Encryption','Calendars and Contacts','Calendar Sharing','Calendar Delegation','Spam Filters','Track Delivery','Webmail'],Databases:['Database Manager','Database Users','Database Wizard','phpMyAdmin','Remote Database Access','PostgreSQL','PostgreSQL Wizard','phpPgAdmin'],Security:['SSH Access','IP Blocker','SSL/TLS','Private Keys','Certificate Signing Requests','Certificates','SSL Sites','SSL Status','AutoSSL','ModSecurity','Hotlink Protection','Leech Protection','Two-Factor Authentication','API Tokens','Security Policy'],Software:['PHP Manager','PHP-FPM','PHP INI Editor','Application Manager','Environment Variables','Application Dependencies','Optimize Website','Perl Modules','PEAR Packages','RubyGems','Ruby on Rails','Application Installer'],Metrics:['Server Metrics','Visitors','Errors','Bandwidth','Raw Access','AWStats','Analog Stats','Webalizer','FTP Statistics','Metrics Editor','Resource Usage','Site Monitoring'],Advanced:['Terminal','Cron Jobs','Track DNS','Indexes','Error Pages','Apache Handlers','MIME Types','API Shell','Virus Scanner'],Preferences:['Password and Security','Language','Contact Information','Account Preferences','User Manager','Manage Team'],Administration:['Access Control','Create Panel User','Audit Log','List Accounts','Suspended Accounts','Account Provisioning','Account Suspension','Account Termination','Shell Access','IP Assignment','Bandwidth Limits','Packages','Feature Manager','Resellers','Server Configuration','Hostname and Resolvers','IP Management','DNS Zones','DNS Templates','DNS Cluster','Configuration Cluster','Backup Configuration','Backup Restoration','Account Transfers','Apache Configuration','PHP Configuration','Mail Configuration','FTP Configuration','Service Manager','Log Rotation','Package Management','Database Services','Mail Queue','Delivery Reports','Brute Force Protection','Host Access Control','Compiler Access','Service Certificates','Process Manager','Task Queue','Service Restarts','System Reboot','Contact Manager','Hooks','Plugins','Branding','Themes and Locales','Support'],Integrations:['WP Toolkit','Softaculous','CloudLinux','LiteSpeed','JetBackup','Comet Backup','Imunify','External DNS/CDN','Billing','External Monitoring','AI Services']};
-const implemented=['Contact Information','Password and Security','Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
+const groups={Marketplace:['Marketplace Dashboard','Hosting Plans','My Orders','Reseller Catalog'],Files:['File Manager','Images','Directory Privacy','Disk Usage','FTP Accounts','FTP Connections','Anonymous FTP','Web Disk','Git Version Control','Git Deployment','Backups','Backup Wizard','File Restoration'],Domains:['Domains','Redirects','DNS Zone Editor','Dynamic DNS','Site Publisher','Site Builder','SEO','Social Media'],Email:['Email Accounts','Forwarders','Domain Forwarders','Autoresponders','Default Address','Email Routing','Email Filters','Global Filters','Email Deliverability','Email Disk Usage','Address Importer','Archive','Mailing Lists','BoxTrapper','Greylisting','Encryption','Calendars and Contacts','Calendar Sharing','Calendar Delegation','Spam Filters','Track Delivery','Webmail'],Databases:['Database Manager','Database Users','Database Wizard','phpMyAdmin','Remote Database Access','PostgreSQL','PostgreSQL Wizard','phpPgAdmin'],Security:['SSH Access','IP Blocker','SSL/TLS','Private Keys','Certificate Signing Requests','Certificates','SSL Sites','SSL Status','AutoSSL','ModSecurity','Hotlink Protection','Leech Protection','Two-Factor Authentication','API Tokens','Security Policy'],Software:['PHP Manager','PHP-FPM','PHP INI Editor','Application Manager','Environment Variables','Application Dependencies','Optimize Website','Perl Modules','PEAR Packages','RubyGems','Ruby on Rails','Application Installer'],Metrics:['Server Metrics','Visitors','Errors','Bandwidth','Raw Access','AWStats','Analog Stats','Webalizer','FTP Statistics','Metrics Editor','Resource Usage','Site Monitoring'],Advanced:['Terminal','Cron Jobs','Track DNS','Indexes','Error Pages','Apache Handlers','MIME Types','API Shell','Virus Scanner'],Preferences:['Password and Security','Language','Contact Information','Account Preferences','User Manager','Manage Team'],Administration:['Reseller Access','Hosting Catalog','Access Control','Create Panel User','Audit Log','List Accounts','Suspended Accounts','Account Provisioning','Account Suspension','Account Termination','Shell Access','IP Assignment','Bandwidth Limits','Packages','Feature Manager','Resellers','Server Configuration','Hostname and Resolvers','IP Management','DNS Zones','DNS Templates','DNS Cluster','Configuration Cluster','Backup Configuration','Backup Restoration','Account Transfers','Apache Configuration','PHP Configuration','Mail Configuration','FTP Configuration','Service Manager','Log Rotation','Package Management','Database Services','Mail Queue','Delivery Reports','Brute Force Protection','Host Access Control','Compiler Access','Service Certificates','Process Manager','Task Queue','Service Restarts','System Reboot','Contact Manager','Hooks','Plugins','Branding','Themes and Locales','Support'],Integrations:['WP Toolkit','Softaculous','CloudLinux','LiteSpeed','JetBackup','Comet Backup','Imunify','External DNS/CDN','Billing','External Monitoring','AI Services']};
+const implemented=['Reseller Access','Reseller Catalog','Marketplace Dashboard','Hosting Plans','My Orders','Hosting Catalog','Contact Information','Password and Security','Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':me?.csrf||''}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let d=await r.json();throw Error(d.error)}return r.status===200&&r.headers.get('Content-Type')?.includes('json')?r.json():null}
 function guard(fn){return async(...args)=>{try{$('message').textContent='';await fn(...args)}catch(e){$('message').textContent=e.message}}}
@@ -8,7 +8,7 @@ function form(fields,submit){let f=el('form');for(const [name,type]of fields){le
 let toolFilter='all';
 let favorites;
 try { favorites=JSON.parse(localStorage.getItem('olamide-favorites')||'[]'); if(!Array.isArray(favorites))favorites=[]; } catch { favorites=[]; }
-const navIcons={Overview:'◈',Files:'▤',Domains:'◎',Email:'✉',Databases:'▥',Security:'♧',Software:'⌘',Metrics:'▥',Advanced:'⌁',Preferences:'⚙',Administration:'▦',Integrations:'◇'};
+const navIcons={Marketplace:'▧',Overview:'◈',Files:'▤',Domains:'◎',Email:'✉',Databases:'▥',Security:'♧',Software:'⌘',Metrics:'▥',Advanced:'⌁',Preferences:'⚙',Administration:'▦',Integrations:'◇'};
 function render(){
  let nav=$('nav');nav.replaceChildren();
  for(const name of ['Overview',...Object.keys(groups)].filter(n=>me?.permissions?.includes('users.manage')||n!=='Administration')){
@@ -20,6 +20,7 @@ function render(){
  $('detail').hidden=true;$('tools').replaceChildren();let count=0;
  let entries=Object.entries(groups).filter(([g])=>(category==='Overview'||g===category)&&(me?.permissions?.includes('users.manage')||g!=='Administration'));
  for(const[g,names]of entries)for(const name of names){
+  if(name==='Reseller Catalog'&&me.role!=='reseller')continue;
   const available=implemented.includes(name);
   if(!(name+' '+g).toLowerCase().includes($('search').value.toLowerCase()) || toolFilter==='available'&&!available || toolFilter==='favorites'&&!favorites.includes(name))continue;
   count++;let card=el('article',undefined,'card'),b=el('button',undefined,'tool-open');
@@ -89,6 +90,7 @@ async function accountEditor(user){
 }
 async function open(name){
  await openBase(name);const d=$('detail');
+ if(['Marketplace Dashboard','Hosting Plans','My Orders','Hosting Catalog','Reseller Catalog','Reseller Access'].includes(name)){await marketplaceView(name,d);return;}
  if(name==='Contact Information'||name==='Password and Security'){
   d.replaceChildren(el('h2',name));const profile=await api('profile');
   if(name==='Contact Information'){const f=form([['display_name','text'],['email','email']],async b=>{await api('profile',b);$('message').textContent='Contact information saved'});for(const field of ['display_name','email']){f.elements[field].required=false;f.elements[field].value=profile[field]||''}d.append(f)}
@@ -105,4 +107,80 @@ async function open(name){
   const deleteForm=form([['confirmation','text']],async b=>{if(b.confirmation!==file.name)throw Error('Type the exact file name to confirm');await api('files',{action:'delete',path});await open(name)});deleteForm.firstElementChild.firstChild.textContent='Type '+file.name+' to delete';deleteForm.lastElementChild.textContent='Delete';row.append(deleteForm);d.append(row);
   }
  }
+}
+
+const money=(cents,currency='USD')=>new Intl.NumberFormat(undefined,{style:'currency',currency}).format(cents/100);
+const hostingTemplates=[
+ {name:'Starter',description:'Suggested for a small personal site or portfolio.',price_cents:500,disk_gb:10,bandwidth_gb:100,websites:1,enabled:false,featured:false},
+ {name:'Business',description:'Suggested for a small business with several websites.',price_cents:1500,disk_gb:30,bandwidth_gb:500,websites:5,enabled:false,featured:true},
+ {name:'Growth',description:'Suggested for a larger group of business websites.',price_cents:3000,disk_gb:75,bandwidth_gb:1500,websites:15,enabled:false,featured:false}
+];
+async function marketplaceView(name,d){
+ const admin=me.permissions.includes('users.manage');
+ const capabilities=await api('marketplace/capabilities');
+ d.append(el('p','Hosting requests and plan management. Payments, automatic renewals and hosting provisioning are not connected. Approval is a manual review decision.'));
+ if(name==='Reseller Access'){
+  if(!admin)throw Error('Super-admin access required');
+  d.append(el('p','Create or assign reseller users in Access Control, then enable publishing here. Disabling a storefront hides its published plans and prevents reseller edits/review; super admins retain control.'));
+  let usersButton=el('button','Manage users and roles');usersButton.onclick=guard(()=>open('Access Control'));d.append(usersButton);
+  const vendors=await api('marketplace/vendors');if(!vendors.length)d.append(el('p','No reseller accounts yet. Assign the reseller role in Access Control.'));
+  for(const vendor of vendors){let row=el('div',undefined,'account-row');row.append(el('strong',vendor.username),el('span',vendor.enabled?'Publishing enabled':'Publishing disabled','badge'),el('p',vendor.active?'Account active':'Account suspended'));
+   let b=el('button',vendor.enabled?'Disable storefront':'Enable storefront');b.onclick=guard(async()=>{await api('marketplace/vendors/save',{id:vendor.id,enabled:!vendor.enabled});await open(name)});row.append(b);d.append(row)}return;
+ }
+ if(name==='Marketplace Dashboard'){
+  const data=await api('marketplace/summary');d.append(el('small',data.scope==='all_accounts'?'ALL ACCOUNTS':data.scope==='reseller_store'?'YOUR PURCHASES AND STOREFRONT ORDERS':'YOUR ACCOUNT'));
+  const grid=el('div',undefined,'access-summary');for(const[label,value]of [['Available plans',data.enabled_plans],['Pending requests',data.counts.pending||0],['Approved requests',data.counts.approved||0],['Rejected',data.counts.rejected||0],['Cancelled',data.counts.cancelled||0]]){let card=el('div',undefined,'metric');card.append(el('small',label),el('strong',String(value)));grid.append(card)}d.append(grid);
+  for(const target of ['Hosting Plans','My Orders',...(admin?['Hosting Catalog','Reseller Access','Access Control']:me.role==='reseller'?['Reseller Catalog']:[])]){let b=el('button',target);b.onclick=guard(()=>open(target));d.append(b)}return;
+ }
+ if(name==='Hosting Plans'||name==='Hosting Catalog'||name==='Reseller Catalog'){
+  if(name==='Hosting Catalog'&&!admin)throw Error('Super-admin access required');
+  const all=await api('marketplace/plans');const plans=name==='Hosting Plans'?all.filter(p=>p.enabled):name==='Reseller Catalog'?all.filter(p=>p.seller_id===me.id):all;
+  if((admin&&name==='Hosting Catalog')||(me.role==='reseller'&&name==='Reseller Catalog'&&capabilities.manage_own)){
+   const add=el('button','Create plan');add.onclick=guard(()=>hostingPlanEditor());d.append(add,el('h3','Suggested starting templates'),el('p','Illustrative monthly USD prices and resource targets. These are not market quotes or provisioned limits. Review capacity, costs and service terms before enabling a plan.'));
+   for(const template of [...hostingTemplates,...resellerTemplates]){let b=el('button','Customize '+template.name+' · '+money(template.price_cents)+'/month');b.onclick=guard(()=>hostingPlanEditor(template));d.append(b)}
+  }
+  if(name==='Reseller Catalog'&&!capabilities.manage_own)d.append(el('p','Publishing is disabled. Ask super admin to enable your storefront.'));
+  const filter=el('input');filter.type='search';filter.placeholder='Search plans';filter.setAttribute('aria-label','Search hosting plans');d.append(filter);let grid=el('div',undefined,'plan-grid');d.append(grid);
+  const render=()=>{grid.replaceChildren();for(const plan of plans.filter(p=>(p.name+' '+p.description).toLowerCase().includes(filter.value.toLowerCase()))){
+   let card=el('article',undefined,'hosting-plan');if(plan.featured)card.append(el('span','Operator featured','badge'));card.append(el('small',(plan.plan_kind==='reseller'?'RESELLER PLAN':'HOSTING PLAN')+' · Seller: '+(plan.seller_id?(plan.seller_name||plan.seller_username||'Reseller #'+plan.seller_id):'OlamidePanel operator')),el('h3',plan.name),el('strong',money(plan.price_cents,plan.currency)+'/month','plan-price'),el('p',plan.description));
+   let ul=el('ul');for(const text of [plan.disk_gb+' GB storage target',plan.bandwidth_gb+' GB monthly transfer target',plan.websites+' website(s)'])ul.append(el('li',text));card.append(ul,el('p','Resource enforcement and provisioning are not implemented.'));
+   if(name==='Hosting Catalog'||(name==='Reseller Catalog'&&capabilities.manage_own)){card.append(el('span',plan.enabled?'Published':'Disabled','badge'));let edit=el('button','Edit plan');edit.onclick=guard(()=>hostingPlanEditor(plan));card.append(edit)}
+   else if(name==='Hosting Plans'&&me.role!=='readonly'&&plan.seller_id!==me.id){let order=el('button','Request this plan');order.onclick=guard(()=>hostingOrderDialog(plan));card.append(order)}
+   grid.append(card);
+  }if(!grid.children.length)grid.append(el('p',name==='Hosting Catalog'?'No plans yet. Create a plan or customize a template.':'No plans are currently published.'))};filter.oninput=render;render();return;
+ }
+ if(name==='My Orders'){
+  d.append(el('small',admin?'LATEST 200 ORDERS ACROSS ALL ACCOUNTS':'YOUR LATEST 200 ORDERS'));
+  const orders=await api('marketplace/orders');const filter=el('select');filter.setAttribute('aria-label','Filter order status');for(const value of ['all','pending','approved','rejected','cancelled']){let o=el('option',value);o.value=value;filter.append(o)}d.append(filter);let list=el('div');d.append(list);
+  const render=()=>{list.replaceChildren();for(const order of orders.filter(o=>filter.value==='all'||o.status===filter.value)){
+   const plan=JSON.parse(order.plan_snapshot);const canReview=admin||(capabilities.manage_own&&order.seller_id===me.id);const card=el('article',undefined,'order-card');card.append(el('h3','#'+order.id+' · '+plan.name),el('span',order.status,'badge'),el('p',money(order.price_cents,order.currency)+'/month · '+order.username+' · '+new Date(order.created*1000).toLocaleString()),el('p','Customer note: '+(order.note||'—')),el('p','Operator note: '+(order.operator_note||'—')));
+   if(order.status==='approved')card.append(el('p','Approved for manual follow-up. Hosting is not automatically active and no payment was collected.'));
+   if(order.status==='pending'&&me.role!=='readonly'){
+    if(canReview){const note=el('textarea');note.maxLength=1000;note.placeholder='Operator note (visible to customer)';note.setAttribute('aria-label','Operator note for order '+order.id);card.append(note);
+     for(const action of ['approve','reject']){const b=el('button',action==='approve'?'Approve for follow-up':'Reject');b.onclick=guard(async()=>{await api('marketplace/orders/action',{id:order.id,action,operator_note:note.value});await open(name)});card.append(b)}}
+    const cancel=el('button','Cancel request');cancel.hidden=!admin&&order.owner!==me.id;cancel.onclick=guard(async()=>{await api('marketplace/orders/action',{id:order.id,action:'cancel'});await open(name)});card.append(cancel);
+   }list.append(card);
+  }if(!list.children.length)list.append(el('p','No orders match this status.'))};filter.onchange=render;render();
+ }
+}
+const resellerTemplates=[
+ {name:'Reseller Launch',plan_kind:'reseller',description:'Illustrative entry reseller allocation for a small client portfolio; manual setup required.',price_cents:2500,disk_gb:50,bandwidth_gb:500,websites:20,enabled:false,featured:false},
+ {name:'Reseller Business',plan_kind:'reseller',description:'Illustrative allocation for a growing reseller portfolio; review server capacity first.',price_cents:5000,disk_gb:100,bandwidth_gb:1500,websites:50,enabled:false,featured:true},
+ {name:'Reseller Scale',plan_kind:'reseller',description:'Illustrative larger portfolio allocation; no automatic infrastructure or quotas.',price_cents:10000,disk_gb:250,bandwidth_gb:4000,websites:100,enabled:false,featured:false}
+];
+async function hostingPlanEditor(plan={name:'',description:'',price_cents:0,disk_gb:10,bandwidth_gb:100,websites:1,enabled:false,featured:false}){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close plan editor');close.onclick=()=>dialog.close();dialog.append(close,el('h2',plan.id?'Edit hosting plan':'Create hosting plan'),el('p','Monthly USD price. Enter price in cents: 1500 = $15.00. Plans stay disabled until you publish them.'));
+ const f=form([['name','text'],['description','textarea'],['price_cents','number'],['disk_gb','number'],['bandwidth_gb','number'],['websites','number']],async b=>{
+  const payload={...b,plan_kind:f.elements.plan_kind.value,enabled:f.elements.enabled.checked,featured:f.elements.featured.checked};for(const key of ['price_cents','disk_gb','bandwidth_gb','websites'])payload[key]=Number(payload[key]);if(plan.id)payload.id=plan.id;
+  try{await api('marketplace/plans/save',payload);dialog.close();await open(me.role==='reseller'?'Reseller Catalog':'Hosting Catalog')}catch(e){status.textContent=e.message}
+ });for(const field of ['name','description','price_cents','disk_gb','bandwidth_gb','websites'])f.elements[field].value=plan[field];f.elements.description.required=false;
+ for(const key of ['price_cents','disk_gb','bandwidth_gb','websites']){f.elements[key].min=key==='price_cents'?0:1;f.elements[key].step=1}
+ const kindLabel=el('label','Plan category');const kind=el('select');kind.name='plan_kind';for(const value of ['hosting','reseller']){let option=el('option',value);option.value=value;option.selected=(plan.plan_kind||'hosting')===value;kind.append(option)}kindLabel.append(kind);f.insertBefore(kindLabel,f.lastElementChild);
+ for(const[key,label]of [['enabled','Publish / allow requests'],['featured','Feature this plan']]){const l=el('label',undefined,'terms-confirm');let input=el('input');input.type='checkbox';input.name=key;input.checked=Boolean(plan[key]);l.append(input,el('span',label));f.insertBefore(l,f.lastElementChild)}
+ let status=el('p');status.setAttribute('role','status');dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
+}
+async function hostingOrderDialog(plan){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close order request');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Request '+plan.name),el('p',money(plan.price_cents,plan.currency)+'/month · No payment will be collected. Hosting requires separate operator setup.'));
+ let key=crypto.randomUUID();const f=form([['note','textarea']],async b=>{try{await api('marketplace/orders/create',{plan_id:plan.id,expected_price_cents:plan.price_cents,request_key:key,note:b.note,confirmed:f.elements.confirmed.checked});dialog.close();await open('My Orders')}catch(e){status.textContent=e.message}});f.elements.note.required=false;f.elements.note.maxLength=1000;
+ const label=el('label',undefined,'terms-confirm');let check=el('input');check.type='checkbox';check.name='confirmed';check.required=true;label.append(check,el('span','I confirm this is an order request for manual review. Approval does not collect payment or activate hosting.'));f.insertBefore(label,f.lastElementChild);f.lastElementChild.textContent='Submit request';const status=el('p');status.setAttribute('role','status');dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
 }
