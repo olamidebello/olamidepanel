@@ -342,6 +342,23 @@
         \ RuntimeError('Public HTTPS health failed')\n        return {'status': 'https_ready', 'www': 'ready' if\
         \ www_ready else 'waiting_dns'}\n    except Exception as exc:\n        return {'status': 'deployed_tls_needs_attention',\
         \ 'detail': type(exc).__name__,\n                'www': 'ready' if www_ready else 'waiting_dns'}\n\ndef\
+        \ publish_panel_snapshot(results):\n    panel_data = Path('/var/lib/olamidepanel')\n    try:\n        group_id\
+        \ = grp.getgrnam('olamidepanel').gr_gid\n    except KeyError:\n        return\n    if not panel_data.is_dir():\n\
+        \        return\n    snapshot = panel_data / 'hosted-domains.json'\n    try:\n        previous = json.loads(snapshot.read_text())\n\
+        \        rows = {r['domain']: r for r in previous.get('domains', []) if isinstance(r, dict) and 'domain'\
+        \ in r}\n    except (OSError, ValueError, TypeError, KeyError):\n        rows = {}\n    for result in results:\n\
+        \        name = result['domain']\n        if result['status'] == 'waiting_repository' and name in rows:\n\
+        \            # Existing static hosting remains valid; source availability is separate.\n            row\
+        \ = dict(rows[name], deployment_status='waiting_repository',\n                       deployment_checked_at=result['checked_at'])\n\
+        \        else:\n            # Replace obsolete roots rather than merging them into application status.\n\
+        \            row = {k: v for k, v in result.items() if k != 'location'}\n            row['deployment_status']\
+        \ = 'running' if result.get('application_ready') else result['status']\n            row['deployment_checked_at']\
+        \ = result['checked_at']\n            if result.get('application_ready'):\n                location = result.get('location',\
+        \ '')\n                backend = re.search(r'proxy_pass (http://127[.]0[.]0[.]1:[0-9]+);', location)\n \
+        \               document = re.search(r'^root ([^;]+);', location)\n                if backend:\n       \
+        \             row['backend'] = backend.group(1)\n                if document:\n                    row['document_root']\
+        \ = document.group(1)\n        rows[name] = row\n    write(snapshot, json.dumps({'updated_at': int(time.time()),\
+        \ 'domains': list(rows.values())}, indent=2) + '\\n', 0o640)\n    os.chown(snapshot, 0, group_id)\n\ndef\
         \ main():\n    global CFG\n    os.umask(0o077)\n    CFG = json.loads(Path('/etc/olamide-github-deploy.json').read_text())\n\
         \    with (BASE / 'worker.lock').open('w') as lock:\n        try:\n            fcntl.flock(lock, fcntl.LOCK_EX\
         \ | fcntl.LOCK_NB)\n        except BlockingIOError:\n            print('Deployment already running')\n \
@@ -366,8 +383,8 @@
         \   result.update(status='needs_attention', error=str(exc) if isinstance(exc, (RuntimeError, ValueError))\
         \ else type(exc).__name__)\n            write(BASE / 'status' / (site['domain'] + '.json'), json.dumps(result,\
         \ indent=2) + '\\n', 0o644)\n            results.append(result)\n        write(BASE / 'status.json', json.dumps(results,\
-        \ indent=2) + '\\n', 0o644)\n        print(json.dumps(results, indent=2))\n\nif __name__ == '__main__':\n\
-        \    main()\n"
+        \ indent=2) + '\\n', 0o644)\n        publish_panel_snapshot(results)\n        print(json.dumps(results,\
+        \ indent=2))\n\nif __name__ == '__main__':\n    main()\n"
   - name: Check worker Python syntax
     ansible.builtin.command: python3 -m py_compile /usr/local/sbin/olamide-github-deploy
     changed_when: false
