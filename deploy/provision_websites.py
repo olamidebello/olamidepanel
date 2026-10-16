@@ -4,6 +4,8 @@ from pathlib import Path
 sys.path.insert(0,'/opt/olamidepanel/panel')
 from database import connect
 from websites import page
+from site_controls import defaults
+from apply_site_controls import apply
 import dns.resolver
 
 STATE=Path('/var/lib/olamidepanel-provisioner')
@@ -29,7 +31,7 @@ def run():
     manifest_path=STATE/'managed.json';manifest=json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     with connect() as con:
         valid=con.execute("SELECT d.id FROM domains d JOIN users u ON u.id=d.owner WHERE u.active=1").fetchall()
-        jobs=con.execute("SELECT s.*,d.name FROM website_requests s JOIN domains d ON d.id=s.domain_id JOIN users u ON u.id=d.owner WHERE s.state='queued' AND u.active=1 ORDER BY s.updated LIMIT 5").fetchall()
+        jobs=con.execute("SELECT s.*,d.name,c.settings AS site_settings,c.revision AS controls_revision FROM website_requests s JOIN domains d ON d.id=s.domain_id LEFT JOIN website_controls c ON c.domain_id=d.id JOIN users u ON u.id=d.owner WHERE s.state='queued' AND u.active=1 ORDER BY s.updated LIMIT 5").fetchall()
     active={str(r['id']) for r in valid}
     for uid in list(manifest):
         if uid not in active:
@@ -75,7 +77,19 @@ def run():
             manifest[str(uid)]=domain
             manifest_path.write_text(json.dumps(manifest))
             command(['certbot','--nginx','--non-interactive','--agree-tos','--email',email,'-d',domain,'--redirect','--keep-until-expiring'],timeout=120)
-            status(uid,'published','Static website published with HTTPS. Only this domain is configured; www is separate.')
+            settings=json.loads(job['site_settings']) if job.get('site_settings') else defaults()
+            apply(site,target,Path('/etc/nginx/olamidepanel-static')/(str(uid)+'.conf'),settings,domain,lambda:command(['nginx','-t']),lambda:command(['systemctl','reload','nginx']))
+            # A concurrent settings edit must remain queued for the next worker pass.
+            with connect() as con:
+                current=con.execute('SELECT revision FROM website_controls WHERE domain_id=? FOR UPDATE',(uid,)).fetchone()
+                request=con.execute('SELECT title,tagline,updated FROM website_requests WHERE domain_id=? FOR UPDATE',(uid,)).fetchone()
+                same_request=request and all(request[k]==job[k] for k in ['title','tagline','updated'])
+                if same_request and current and current['revision']==job.get('controls_revision'):
+                    con.execute('UPDATE website_controls SET applied_revision=? WHERE domain_id=?',(current['revision'],uid))
+                    con.execute("UPDATE website_requests SET state='published',message='HTTPS static site and controls applied',updated=? WHERE domain_id=?",(int(time.time()),uid))
+                elif same_request and not current:
+                    con.execute("UPDATE website_requests SET state='published',message='HTTPS static site published',updated=? WHERE domain_id=?",(int(time.time()),uid))
+
         except ValueError as e:status(uid,'needs_attention',str(e)[:500])
         except Exception:status(uid,'needs_attention','Server provisioning failed. Operator should inspect Nginx/Certbot status and retry.')
     manifest_path.write_text(json.dumps(manifest))

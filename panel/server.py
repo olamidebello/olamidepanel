@@ -12,6 +12,7 @@ import websites
 import storage
 import mfa
 import dns_tools
+import site_controls
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -78,6 +79,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,storage.handle('GET',self.path,u))
                 if self.path.startswith('/api/files?'):
                     return self.reply(200,storage.handle('GET',self.path.replace('/api/files?','/api/storage/files?',1),u))
+                if self.path=='/api/site-controls':
+                    status,value=site_controls.handle('GET',u)
+                    return self.reply(status,value)
                 if self.path=='/api/websites':
                     status,value=websites.handle('GET',self.path,u)
                     return self.reply(status,value)
@@ -161,6 +165,9 @@ class Handler(BaseHTTPRequestHandler):
                 result=storage.handle('POST',route,u,body)
                 with db() as con:con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],'storage:'+body.get('action',''),int(time.time())))
                 return self.reply(200,result)
+            if self.path=='/api/site-controls':
+                status,value=site_controls.handle('POST',u,body)
+                return self.reply(status,value)
             if self.path=='/api/websites':
                 status,value=websites.handle('POST',self.path,u,body)
                 return self.reply(status,value)

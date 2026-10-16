@@ -200,3 +200,20 @@ class PanelTest(unittest.TestCase):
         marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':seller['id'],'enabled':False})
         self.assertEqual(marketplace.handle('POST','/api/marketplace/store/save',seller,settings)[0],403)
         _,stores=marketplace.handle('GET','/api/marketplace/stores',buyer);self.assertFalse(any(row['owner_id']==seller['id'] for row in stores))
+
+    def test_site_controls_persist_revisions_and_enforce_ownership(self):
+        cookie,csrf=self.login()
+        self.request('domains',{'name':'controls.example.com'},cookie,csrf)
+        domain=next(d for d in json.load(self.request('domains',cookie=cookie)) if d['name']=='controls.example.com')
+        self.request('websites',{'domain_id':domain['id'],'title':'Control test','tagline':'Static test'},cookie,csrf)
+        settings={'redirects':[{'path':'/old','target':'https://example.net/new','status':302}],'indexes':False,'errors':{'404':'Not found'},'hotlink':False,'referers':[],'blocked_ips':['192.0.2.1']}
+        saved=self.request('site-controls',{'domain_id':domain['id'],'revision':0,'settings':settings},cookie,csrf)
+        self.assertEqual(saved.status,202)
+        row=next(d for d in json.load(self.request('site-controls',cookie=cookie)) if d['id']==domain['id'])
+        self.assertEqual(row['revision'],1);self.assertEqual(row['applied_revision'],0);self.assertEqual(row['state'],'queued');self.assertEqual(row['settings']['blocked_ips'],['192.0.2.1/32'])
+        with self.assertRaises(urllib.error.HTTPError) as stale:self.request('site-controls',{'domain_id':domain['id'],'revision':0,'settings':settings},cookie,csrf)
+        self.assertEqual(stale.exception.code,409)
+        other,other_csrf=self.login('other','another-long-password')
+        with self.assertRaises(urllib.error.HTTPError) as denied:self.request('site-controls',{'domain_id':domain['id'],'revision':1,'settings':settings},other,other_csrf)
+        self.assertEqual(denied.exception.code,404)
+        self.assertFalse(any(d['id']==domain['id'] for d in json.load(self.request('site-controls',cookie=other))))

@@ -186,10 +186,10 @@
   {
     "category": "Domains",
     "name": "Redirects",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+    "status": "partial",
+    "source": "panel/site_controls.py; deploy/apply_site_controls.py; deploy/provision_websites.py",
+    "api": "/api/site-controls",
+    "detail": "Database-backed controls for DNS-verified static sites; root worker validates and reloads Nginx with rollback. Saved/applied revisions shown in GUI. Does not manage arbitrary application hosts or the panel hostname."
   },
   {
     "category": "Domains",
@@ -490,10 +490,10 @@
   {
     "category": "Security",
     "name": "IP Blocker",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+    "status": "partial",
+    "source": "panel/site_controls.py; deploy/apply_site_controls.py; deploy/provision_websites.py",
+    "api": "/api/site-controls",
+    "detail": "Database-backed controls for DNS-verified static sites; root worker validates and reloads Nginx with rollback. Saved/applied revisions shown in GUI. Does not manage arbitrary application hosts or the panel hostname."
   },
   {
     "category": "Security",
@@ -562,10 +562,10 @@
   {
     "category": "Security",
     "name": "Hotlink Protection",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+    "status": "partial",
+    "source": "panel/site_controls.py; deploy/apply_site_controls.py; deploy/provision_websites.py",
+    "api": "/api/site-controls",
+    "detail": "Database-backed controls for DNS-verified static sites; root worker validates and reloads Nginx with rollback. Saved/applied revisions shown in GUI. Does not manage arbitrary application hosts or the panel hostname."
   },
   {
     "category": "Security",
@@ -818,18 +818,18 @@
   {
     "category": "Advanced",
     "name": "Indexes",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+    "status": "partial",
+    "source": "panel/site_controls.py; deploy/apply_site_controls.py; deploy/provision_websites.py",
+    "api": "/api/site-controls",
+    "detail": "Database-backed controls for DNS-verified static sites; root worker validates and reloads Nginx with rollback. Saved/applied revisions shown in GUI. Does not manage arbitrary application hosts or the panel hostname."
   },
   {
     "category": "Advanced",
     "name": "Error Pages",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+    "status": "partial",
+    "source": "panel/site_controls.py; deploy/apply_site_controls.py; deploy/provision_websites.py",
+    "api": "/api/site-controls",
+    "detail": "Database-backed controls for DNS-verified static sites; root worker validates and reloads Nginx with rollback. Saved/applied revisions shown in GUI. Does not manage arbitrary application hosts or the panel hostname."
   },
   {
     "category": "Advanced",
