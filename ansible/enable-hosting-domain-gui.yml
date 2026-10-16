@@ -1,0 +1,60 @@
+---
+- name: Deploy administrator hosting domain inventory GUI
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    panel_install: /opt/olamidepanel
+  tasks:
+    - name: Verify existing panel dependencies are installed
+      ansible.builtin.stat:
+        path: '{{ panel_install }}/{{ item }}'
+      loop: [venv/bin/python, panel/server.py, panel/site_controls.py, panel/mfa.py, panel/storage.py, panel/dns_tools.py]
+      register: panel_dependencies
+    - name: Require an installed current OlamidePanel
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: Deploy the current panel modules before applying this GUI update.
+      loop: '{{ panel_dependencies.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+    - name: Copy GUI and read-only API code with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '{{ panel_install }}/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [hosted_domains.py, server.py, static/app.js]
+      notify: Restart panel
+    - name: Validate Python modules before restart
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -m, py_compile, '{{ panel_install }}/panel/hosted_domains.py', '{{ panel_install }}/panel/server.py']
+      changed_when: false
+    - name: Detect installed hosting worker
+      ansible.builtin.stat:
+        path: /usr/local/sbin/olamide-six-domains
+      register: hosting_worker
+    - name: Export real hosting states to the administrator GUI
+      ansible.builtin.command: /usr/local/sbin/olamide-six-domains
+      async: 2400
+      poll: 10
+      changed_when: false
+      when: hosting_worker.stat.exists and not ansible_check_mode
+    - name: Apply panel restart
+      ansible.builtin.meta: flush_handlers
+    - name: Wait for the panel listener
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 8090
+        timeout: 30
+      when: not ansible_check_mode
+    - name: Report administrator navigation
+      ansible.builtin.debug:
+        msg: Sign in as panel root or super admin. Open Administration -> Hosting Domains, or View all hosting domains on the overview. Customer domain ownership is unchanged.
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted
