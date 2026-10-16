@@ -78,7 +78,146 @@ setTheme(savedTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':
 $('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 $('help').onclick=()=>$('guide').showModal();$('closeGuide').onclick=()=>$('guide').close();
 $('quickFiles').onclick=guard(()=>open('File Manager'));$('quickDomain').onclick=guard(()=>open('Domains'));$('guideMetrics').onclick=guard(()=>open('Server Metrics'));
-$('showAvailable').onclick=()=>{category='Overview';toolFilter='av…5410 tokens truncated…('span',row.mode.toUpperCase()+' · '+row.state,'badge'),el('p',row.provider+' · '+money(row.amount_cents,row.currency)+' · Store '+row.seller_id));const verify=el('button','Verify with provider');verify.onclick=guard(async()=>{const result=await api('payments/verify',{id:row.id});$('message').textContent=result.paid?'Provider confirmed payment ('+row.mode+' mode). Hosting setup is separate.':'Provider has not confirmed payment';await open(name)});card.append(verify);
+$('showAvailable').onclick=()=>{category='Overview';toolFilter='available';$('search').value='';render();$('sectionTitle').scrollIntoView({block:'start'})};
+document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{toolFilter=b.dataset.filter;render()});
+document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('workspace').hidden&&!$('guide').open){e.preventDefault();$('search').focus()}});
+
+async function accountEditor(user){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close account editor');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Manage '+user.username),el('p','Changes apply to this panel account. Account files are retained after deletion.'));
+ const status=el('p');status.setAttribute('role','status');const run=async body=>{try{await api('users/action',{id:user.id,...body});status.textContent='Account updated';}catch(e){status.textContent=e.message}};
+ dialog.append(el('h3','Account details'));
+ const profile=form([['display_name','text'],['email','email']],async b=>run({...b,action:'profile'}));profile.elements.display_name.required=false;profile.elements.email.required=false;profile.elements.display_name.value=user.display_name||'';profile.elements.email.value=user.email||'';dialog.append(profile);
+ dialog.append(el('h3','Set a new password'));const pw=form([['password','password']],async b=>{await run({...b,action:'password'});pw.reset()});pw.elements.password.minLength=14;dialog.append(pw);
+ const revoke=el('button','Revoke all sessions');revoke.onclick=()=>run({action:'revoke_sessions'});dialog.append(revoke);
+ if(!user.active){dialog.append(el('h3','Delete suspended account'),el('p','Type the exact username. Domain inventory is removed; files are retained for operator recovery.'));dialog.append(form([['confirmation','text']],async b=>{await run({...b,action:'delete'})}))}
+ dialog.append(status);dialog.addEventListener('close',()=>{dialog.remove();guard(()=>open('Access Control'))()});document.body.append(dialog);dialog.showModal();
+}
+async function open(name){
+ const accountTools=['User Manager','List Accounts','Suspended Accounts','Account Suspension','Account Termination','Resellers'];
+ if(accountTools.includes(name)){if(!me.permissions.includes('users.manage'))throw Error('Super-admin access required');await accountToolsView(name);return;}
+ if(!implemented.includes(name)){await moduleStatusView(name);return;}
+ if(groups.Marketplace.includes(name)&&!marketplaceMenu.some(item=>item.name===name))throw Error('This marketplace menu is unavailable for your account');
+ if(location.hash!=='#tool='+encodeURIComponent(name))history.pushState(null,'','#tool='+encodeURIComponent(name));
+ if(groups.Marketplace.includes(name)){category='Marketplace';render()}
+ await openBase(name);const d=$('detail');
+ if(['Redirects','Indexes','Error Pages','Hotlink Protection','IP Blocker'].includes(name)){await siteControlsView(name,d);return;}
+ if(name==='Track DNS'){await dnsView(d);return;}
+ if(name==='Two-Factor Authentication'){await mfaView(d);return;}
+ if(['Images','Disk Usage','Backups','Backup Wizard','File Restoration'].includes(name)){await storageView(name,d);return;}
+ if(name==='Site Publisher'){await publisherView(d);return;}
+ if(name==='Payment Gateways'||name==='Payments'){await paymentView(name,d);return;}
+ if(name==='Module Readiness'){const data=await api('modules');d.append(el('p',data.notice));for(const module of data.modules){const row=el('div',undefined,'account-row');row.append(el('strong',module.name),el('span',module.status,'badge'),el('p',module.detail));d.append(row)}d.append(el('h3','Individual tools'));for(const tool of data.tools){const row=el('details');row.append(el('summary',tool.category+' / '+tool.name+' · '+tool.status),el('p',tool.detail));d.append(row)}return;}
+ if(['Marketplace Dashboard','Hosting Plans','Browse Stores','Store Settings','Store Orders','My Orders','Hosting Catalog','Reseller Catalog','Reseller Access'].includes(name)){await marketplaceView(name,d);return;}
+ if(name==='Contact Information'||name==='Password and Security'){
+  d.replaceChildren(el('h2',name));const profile=await api('profile');
+  if(name==='Contact Information'){const f=form([['display_name','text'],['email','email']],async b=>{await api('profile',b);$('message').textContent='Contact information saved'});for(const field of ['display_name','email']){f.elements[field].required=false;f.elements[field].value=profile[field]||''}d.append(f)}
+  else{d.append(el('p','Use a password with at least 14 characters. Changing it signs out all sessions.'));const f=form([['current_password','password'],['password','password']],async b=>{await api('profile',{...b,email:profile.email,display_name:profile.display_name});location.reload()});f.elements.password.minLength=14;d.append(f)}
+ }
+ if(name==='Domains'&&me.permissions.includes('domains.write')){
+  d.append(el('h3','Remove domain inventory'));const list=await api('domains');for(const domain of list){let row=el('div',undefined,'account-row');row.append(el('strong',domain.name));const remove=el('button','Remove record');remove.onclick=guard(async()=>{await api('domains/delete',{id:domain.id});await open(name)});row.append(remove);d.append(row)}
+ }
+ if(name==='File Manager'&&me.permissions.includes('files.write')){
+  const files=await api('files?path='+encodeURIComponent(cwd));await uploadControls(d);d.append(el('h3','File actions'),el('p','Rename, copy or remove files. Folder deletion requires an empty folder.'));
+  for(const file of files){let path=[cwd,file.name].filter(Boolean).join('/');let row=el('details');row.append(el('summary',file.name));let download=el('a','Download');download.href='/api/storage/download?path='+encodeURIComponent(path);download.download=file.name;if(!file.directory)row.append(download);if(!file.directory){
+   const f=form([['destination','text']],async b=>{await api('files',{action:f.elements.operation.value,path,destination:b.destination});await open(name)});const select=el('select');select.name='operation';select.setAttribute('aria-label','File operation');for(const action of ['rename','copy']){let option=el('option',action);option.value=action;select.append(option)}f.insertBefore(select,f.firstChild);f.elements.destination.value=path;row.append(f);
+  }
+  const archiveForm=form([['destination','text']],async b=>{await api('storage/files',{action:archiveForm.elements.archive_action.value,path,destination:b.destination});await open(name)});const archiveAction=el('select');archiveAction.name='archive_action';archiveAction.setAttribute('aria-label','Archive operation');for(const action of ['compress','extract']){let option=el('option',action);option.value=action;archiveAction.append(option)}archiveForm.insertBefore(archiveAction,archiveForm.firstChild);archiveForm.elements.destination.value=path+'.zip';row.append(archiveForm);
+  const deleteForm=form([['confirmation','text']],async b=>{if(b.confirmation!==file.name)throw Error('Type the exact file name to confirm');await api('files',{action:'delete',path});await open(name)});deleteForm.firstElementChild.firstChild.textContent='Type '+file.name+' to delete';deleteForm.lastElementChild.textContent='Delete';row.append(deleteForm);d.append(row);
+  }
+ }
+}
+
+const money=(cents,currency='USD')=>new Intl.NumberFormat(undefined,{style:'currency',currency}).format(cents/100);
+const hostingTemplates=[
+ {name:'Starter',description:'Suggested for a small personal site or portfolio.',price_cents:500,disk_gb:10,bandwidth_gb:100,websites:1,enabled:false,featured:false},
+ {name:'Business',description:'Suggested for a small business with several websites.',price_cents:1500,disk_gb:30,bandwidth_gb:500,websites:5,enabled:false,featured:true},
+ {name:'Growth',description:'Suggested for a larger group of business websites.',price_cents:3000,disk_gb:75,bandwidth_gb:1500,websites:15,enabled:false,featured:false}
+];
+async function marketplaceView(name,d){
+ const admin=me.permissions.includes('users.manage');
+ const capabilities=await api('marketplace/capabilities');
+ d.append(marketplaceNavigation(name));
+ if(name==='Store Settings'){await storeSettingsView(d,admin);return;}
+ if(name==='Browse Stores'){for(const store of await api('marketplace/stores')){const card=el('article',undefined,'order-card');card.append(el('h3',store.name),el('p',store.description||'Hosting storefront'));if(store.contact_email){const email=el('a',store.contact_email);email.href='mailto:'+store.contact_email;card.append(email)}const browse=el('button','View store plans');browse.onclick=guard(async()=>{selectedStore=store.owner_id;await open('Hosting Plans')});card.append(browse);d.append(card)}return;}
+ d.append(el('p','Paid plans activate panel account resources automatically after verified live payment. Stripe and Paystack require merchant setup. Services last 30 days; no automatic renewal.'));
+ if(name==='Reseller Access'){
+  if(!admin)throw Error('Super-admin access required');
+  d.append(el('p','Create or assign reseller users in Access Control, then enable publishing here. Disabling a storefront hides its published plans and prevents reseller edits/review; super admins retain control.'));
+  let usersButton=el('button','Manage users and roles');usersButton.onclick=guard(()=>open('Access Control'));d.append(usersButton);
+  const vendors=await api('marketplace/vendors');if(!vendors.length)d.append(el('p','No reseller accounts yet. Assign the reseller role in Access Control.'));
+  for(const vendor of vendors){let row=el('div',undefined,'account-row');row.append(el('strong',vendor.username),el('span',vendor.enabled?'Publishing enabled':'Publishing disabled','badge'),el('p',vendor.active?'Account active':'Account suspended'));
+   let b=el('button',vendor.enabled?'Disable storefront':'Enable storefront');b.onclick=guard(async()=>{await api('marketplace/vendors/save',{id:vendor.id,enabled:!vendor.enabled});await open(name)});row.append(b);d.append(row)}return;
+ }
+ if(name==='Marketplace Dashboard'){
+  const data=await api('marketplace/summary');d.append(el('small',data.scope==='all_accounts'?'ALL ACCOUNTS':data.scope==='reseller_store'?'YOUR PURCHASES AND STOREFRONT ORDERS':'YOUR ACCOUNT'));
+  const grid=el('div',undefined,'access-summary');for(const[label,value]of [['Available plans',data.enabled_plans],['Pending requests',data.counts.pending||0],['Approved requests',data.counts.approved||0],['Rejected',data.counts.rejected||0],['Cancelled',data.counts.cancelled||0]]){let card=el('div',undefined,'metric');card.append(el('small',label),el('strong',String(value)));grid.append(card)}d.append(grid);
+  for(const target of ['Hosting Plans','My Orders',...(admin?['Hosting Catalog','Reseller Access','Access Control']:me.role==='reseller'?['Reseller Catalog']:[])]){let b=el('button',target);b.onclick=guard(()=>open(target));d.append(b)}return;
+ }
+ if(name==='Hosting Plans'||name==='Hosting Catalog'||name==='Reseller Catalog'){
+  if(name==='Hosting Catalog'&&!admin)throw Error('Super-admin access required');
+  const all=await api('marketplace/plans');const plans=name==='Hosting Plans'?all.filter(p=>p.enabled&&(selectedStore===null||p.seller_id===selectedStore)):name==='Reseller Catalog'?all.filter(p=>p.seller_id===me.id):all;
+  if(name==='Hosting Plans'&&selectedStore!==null){const clear=el('button','Show all stores');clear.onclick=guard(async()=>{selectedStore=null;await open(name)});d.append(el('p','Viewing store #'+selectedStore),clear)}
+  if((admin&&name==='Hosting Catalog')||(me.role==='reseller'&&name==='Reseller Catalog'&&capabilities.manage_own)){
+   const add=el('button','Create plan');add.onclick=guard(()=>hostingPlanEditor());d.append(add,el('h3','Suggested starting templates'),el('p','Illustrative monthly USD prices. Storage and website limits apply in the panel; bandwidth is not metered. Review server capacity and costs before publishing.'));
+   for(const template of [...hostingTemplates,...resellerTemplates]){let b=el('button','Customize '+template.name+' · '+money(template.price_cents)+'/month');b.onclick=guard(()=>hostingPlanEditor(template));d.append(b)}
+  }
+  if(name==='Reseller Catalog'&&!capabilities.manage_own)d.append(el('p','Publishing is disabled. Ask super admin to enable your storefront.'));
+  const filter=el('input');filter.type='search';filter.placeholder='Search plans';filter.setAttribute('aria-label','Search hosting plans');d.append(filter);let grid=el('div',undefined,'plan-grid');d.append(grid);
+  const render=()=>{grid.replaceChildren();for(const plan of plans.filter(p=>(p.name+' '+p.description).toLowerCase().includes(filter.value.toLowerCase()))){
+   let card=el('article',undefined,'hosting-plan');if(plan.featured)card.append(el('span','Operator featured','badge'));card.append(el('small',(plan.plan_kind==='reseller'?'RESELLER PLAN':'HOSTING PLAN')+' · Seller: '+(plan.seller_id?(plan.seller_name||plan.seller_username||'Reseller #'+plan.seller_id):'OlamidePanel operator')),el('h3',plan.name),el('strong',money(plan.price_cents,plan.currency)+'/month','plan-price'),el('p',plan.description));
+   let ul=el('ul');for(const text of [plan.disk_gb+' GB storage target',plan.bandwidth_gb+' GB monthly transfer target',plan.websites+' website(s)'])ul.append(el('li',text));card.append(ul,el('p','Panel storage and website allocations activate after verified live payment. Transfer is a recorded allocation; bandwidth metering is not available. DNS/HTTPS requires ownership verification.'));
+   if(name==='Hosting Catalog'||(name==='Reseller Catalog'&&capabilities.manage_own)){card.append(el('span',plan.enabled?'Published':'Disabled','badge'));let edit=el('button','Edit plan');edit.onclick=guard(()=>hostingPlanEditor(plan));card.append(edit)}
+   else if(name==='Hosting Plans'&&me.role!=='readonly'&&plan.seller_id!==me.id){let order=el('button','Request this plan');order.onclick=guard(()=>hostingOrderDialog(plan));card.append(order)}
+   grid.append(card);
+  }if(!grid.children.length)grid.append(el('p',name==='Hosting Catalog'?'No plans yet. Create a plan or customize a template.':'No plans are currently published.'))};filter.oninput=render;render();return;
+ }
+ if(name==='My Orders'||name==='Store Orders'){
+  d.append(el('small',name==='Store Orders'?(admin?'LATEST 200 ORDERS ACROSS ALL STORES':'YOUR LATEST 200 STORE ORDERS'):'YOUR LATEST 200 PURCHASES'));
+  const orders=await api('marketplace/orders?scope='+(name==='Store Orders'?'store':'purchases'));const filter=el('select');filter.setAttribute('aria-label','Filter order status');for(const value of ['all','pending','approved','rejected','cancelled']){let o=el('option',value);o.value=value;filter.append(o)}d.append(filter);let list=el('div');d.append(list);
+  const render=()=>{list.replaceChildren();for(const order of orders.filter(o=>filter.value==='all'||o.status===filter.value)){
+   const plan=JSON.parse(order.plan_snapshot);const canReview=admin||(capabilities.manage_own&&order.seller_id===me.id);const card=el('article',undefined,'order-card');card.append(el('h3','#'+order.id+' · '+plan.name),el('span',order.status,'badge'),el('p',money(order.price_cents,order.currency)+'/month · '+order.username+' · '+new Date(order.created*1000).toLocaleString()),el('p','Customer note: '+(order.note||'—')),el('p','Operator note: '+(order.operator_note||'—')));
+   if(order.status==='approved'){
+    card.append(el('p',order.provisioning?'Payment verified. Account activation status is shown below.':'Ready for payment. Verified live payment queues automatic account activation.'));
+    if(!order.provisioning&&order.owner===me.id&&me.role!=='readonly'){let pay=el('button','Payment options');pay.onclick=guard(()=>paymentCheckout(order));card.append(pay)}
+   }
+   if(order.provisioning){card.append(el('span','Provisioning: '+order.provisioning.state,'badge'),el('p',order.provisioning.message));if(order.provisioning.state==='needs_attention'&&canReview){const retry=el('button','Retry account activation');retry.onclick=guard(async()=>{await api('marketplace/orders/retry',{id:order.id});await open(name)});card.append(retry)}}
+   if(order.service){card.append(el('p','Service: '+order.service.state+' · '+order.service.disk_bytes/1024**3+' GiB panel storage · '+order.service.websites+' websites · Ends '+new Date(order.service.expires_at*1000).toLocaleString()));const manage=el('button','Manage account resources');manage.onclick=guard(()=>open('File Manager'));card.append(manage)}
+   if(order.status==='pending'&&me.role!=='readonly'){
+    if(canReview){const note=el('textarea');note.maxLength=1000;note.placeholder='Operator note (visible to customer)';note.setAttribute('aria-label','Operator note for order '+order.id);card.append(note);
+     for(const action of ['approve','reject']){const b=el('button',action==='approve'?'Approve for follow-up':'Reject');b.onclick=guard(async()=>{await api('marketplace/orders/action',{id:order.id,action,operator_note:note.value});await open(name)});card.append(b)}}
+    const cancel=el('button','Cancel request');cancel.hidden=!admin&&order.owner!==me.id;cancel.onclick=guard(async()=>{await api('marketplace/orders/action',{id:order.id,action:'cancel'});await open(name)});card.append(cancel);
+   }list.append(card);
+  }if(!list.children.length)list.append(el('p','No orders match this status.'))};filter.onchange=render;render();
+ }
+}
+const resellerTemplates=[
+ {name:'Reseller Launch',plan_kind:'reseller',description:'Illustrative entry reseller allocation for a small client portfolio; automatic panel activation after verified live payment.',price_cents:2500,disk_gb:50,bandwidth_gb:500,websites:20,enabled:false,featured:false},
+ {name:'Reseller Business',plan_kind:'reseller',description:'Illustrative allocation for a growing reseller portfolio; review server capacity first.',price_cents:5000,disk_gb:100,bandwidth_gb:1500,websites:50,enabled:false,featured:true},
+ {name:'Reseller Scale',plan_kind:'reseller',description:'Illustrative larger portfolio allocation; automatic panel storage and website allocation.',price_cents:10000,disk_gb:250,bandwidth_gb:4000,websites:100,enabled:false,featured:false}
+];
+async function hostingPlanEditor(plan={name:'',description:'',price_cents:0,disk_gb:10,bandwidth_gb:100,websites:1,enabled:false,featured:false}){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close plan editor');close.onclick=()=>dialog.close();dialog.append(close,el('h2',plan.id?'Edit hosting plan':'Create hosting plan'),el('p','Monthly USD price. Enter price in cents: 1500 = $15.00. Plans stay disabled until you publish them.'));
+ const f=form([['name','text'],['description','textarea'],['price_cents','number'],['disk_gb','number'],['bandwidth_gb','number'],['websites','number']],async b=>{
+  const payload={...b,plan_kind:f.elements.plan_kind.value,enabled:f.elements.enabled.checked,featured:f.elements.featured.checked};for(const key of ['price_cents','disk_gb','bandwidth_gb','websites'])payload[key]=Number(payload[key]);if(plan.id)payload.id=plan.id;
+  try{await api('marketplace/plans/save',payload);dialog.close();await open(me.role==='reseller'?'Reseller Catalog':'Hosting Catalog')}catch(e){status.textContent=e.message}
+ });for(const field of ['name','description','price_cents','disk_gb','bandwidth_gb','websites'])f.elements[field].value=plan[field];f.elements.description.required=false;
+ for(const key of ['price_cents','disk_gb','bandwidth_gb','websites']){f.elements[key].min=key==='price_cents'?0:1;f.elements[key].step=1}
+ const kindLabel=el('label','Plan category');const kind=el('select');kind.name='plan_kind';for(const value of ['hosting','reseller']){let option=el('option',value);option.value=value;option.selected=(plan.plan_kind||'hosting')===value;kind.append(option)}kindLabel.append(kind);f.insertBefore(kindLabel,f.lastElementChild);
+ for(const[key,label]of [['enabled','Publish / allow requests'],['featured','Feature this plan']]){const l=el('label',undefined,'terms-confirm');let input=el('input');input.type='checkbox';input.name=key;input.checked=Boolean(plan[key]);l.append(input,el('span',label));f.insertBefore(l,f.lastElementChild)}
+ let status=el('p');status.setAttribute('role','status');dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
+}
+async function hostingOrderDialog(plan){
+ const dialog=el('dialog');dialog.className='account-dialog';let close=el('button','×','dialog-close');close.setAttribute('aria-label','Close order request');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Request '+plan.name),el('p',money(plan.price_cents,plan.currency)+'/month · Complete hosted checkout after ordering to activate your panel resources automatically.'));
+ let key=crypto.randomUUID();const f=form([['note','textarea']],async b=>{try{await api('marketplace/orders/create',{plan_id:plan.id,expected_price_cents:plan.price_cents,request_key:key,note:b.note,confirmed:f.elements.confirmed.checked});dialog.close();await open('My Orders')}catch(e){status.textContent=e.message}});f.elements.note.required=false;f.elements.note.maxLength=1000;
+ const label=el('label',undefined,'terms-confirm');let check=el('input');check.type='checkbox';check.name='confirmed';check.required=true;label.append(check,el('span','I confirm this order. Payment is completed separately; verified live payment activates my purchased resources for 30 days.'));f.insertBefore(label,f.lastElementChild);f.lastElementChild.textContent='Submit request';const status=el('p');status.setAttribute('role','status');dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
+}
+
+async function paymentView(name,d){
+ d.append(marketplaceNavigation(name));
+ d.append(el('p','Hosted one-time payments for approved orders. No card details are collected here. Verified live payment automatically queues account activation. Test gateway transactions do not represent money received.'));
+ if(name==='Payments'){
+  const rows=await api('payments/transactions');if(!rows.length)d.append(el('p','No payment attempts yet. Open My Orders → Payment options after approval.'));
+  for(const row of rows){const card=el('article',undefined,'order-card');card.append(el('h3','Payment #'+row.id+' · Order #'+row.order_id),el('span',row.mode.toUpperCase()+' · '+row.state,'badge'),el('p',row.provider+' · '+money(row.amount_cents,row.currency)+' · Store '+row.seller_id));const verify=el('button','Verify with provider');verify.onclick=guard(async()=>{const result=await api('payments/verify',{id:row.id});$('message').textContent=result.paid?'Provider confirmed payment ('+row.mode+' mode). '+(row.mode==='live'?'Account activation is queued; see My Orders.':'Test payments do not activate services.'):'Provider has not confirmed payment';await open(name)});card.append(verify);
    if(row.state!=='paid'&&(me.permissions.includes('users.manage')||(me.role==='reseller'&&row.seller_id===me.id))){card.append(el('p','Reconciliation token: '+row.token));const f=form([['reference','text']],async b=>{await api('payments/reconcile',{id:row.id,reference:b.reference});await open(name)});f.elements.reference.value=row.provider_reference||'';f.lastElementChild.textContent='Verify and reconcile reference';card.append(f)}d.append(card)}return;
  }
  const data=await api('payments/gateways');const add=el('button','Add gateway');add.onclick=guard(()=>gatewayEditor());d.append(add,el('p','Credentials are encrypted on the server and never returned to this screen. Use a new gateway when changing merchant accounts. Preserve the server encryption key with your backups.'));
@@ -95,7 +234,7 @@ async function gatewayEditor(gateway={provider:'stripe',mode:'test',label:'',own
  dialog.append(el('p','Stripe requires a whsec_ webhook signing secret. Paystack signs webhooks using its secret key. Leave stored secrets blank to preserve them when editing.'));let status=el('p');status.setAttribute('role','status');dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
 }
 async function paymentCheckout(order){
- const options=await api('payments/options/'+order.id);const dialog=el('dialog');dialog.className='account-dialog';const close=el('button','×','dialog-close');close.setAttribute('aria-label','Close checkout');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Pay for order #'+order.id),el('p',money(order.price_cents,order.currency)+' for one month. This is a one-time payment, without automatic renewal. Hosting activation requires operator follow-up.'));
+ const options=await api('payments/options/'+order.id);const dialog=el('dialog');dialog.className='account-dialog';const close=el('button','×','dialog-close');close.setAttribute('aria-label','Close checkout');close.onclick=()=>dialog.close();dialog.append(close,el('h2','Pay for order #'+order.id),el('p',money(order.price_cents,order.currency)+' for one month. This is a one-time payment, without automatic renewal. Verified live payment activates your purchased panel resources automatically.'));
  const f=el('form'),select=el('select');select.setAttribute('aria-label','Choose gateway');for(const option of options){const opt=el('option',option.label+' · '+option.provider+' · '+option.mode.toUpperCase());opt.value=option.id;select.append(opt)}f.append(select);const l=el('label',undefined,'terms-confirm');const check=el('input');check.type='checkbox';check.required=true;l.append(check,el('span','I confirm the amount and the selected TEST/LIVE mode and authorize this one-time checkout.'));f.append(l);const button=el('button','Continue to hosted checkout');button.disabled=!options.length;f.append(button);const status=el('p');status.setAttribute('role','status');f.onsubmit=async e=>{e.preventDefault();button.disabled=true;try{const result=await api('payments/checkout',{order_id:order.id,gateway_id:Number(select.value),confirmed:check.checked});location.assign(result.url)}catch(error){status.textContent=error.message;button.disabled=false}};
  if(!options.length)dialog.append(el('p','No gateway is enabled for this seller. Contact the operator.'));dialog.append(f,status);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
 }

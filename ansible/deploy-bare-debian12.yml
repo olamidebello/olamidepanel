@@ -235,6 +235,21 @@
         that: bootstrap_account.rc == 0
         fail_msg: 'Bootstrap result (redacted): {{ bootstrap_account.stdout | default("No result returned") }}'
       when: not ansible_check_mode
+    - name: Install paid service activation worker
+      ansible.builtin.copy:
+        src: '/opt/olamidepanel/repo/deploy/{{ item }}'
+        dest: '/etc/systemd/system/{{ item }}'
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0644'
+      loop: [olamidepanel-fulfillment.service, olamidepanel-fulfillment.timer]
+    - name: Enable automatic paid service activation
+      ansible.builtin.systemd:
+        name: olamidepanel-fulfillment.timer
+        enabled: true
+        state: started
+        daemon_reload: true
     - name: Create initial Nginx virtual host without overwriting issued TLS configuration
       ansible.builtin.copy:
         dest: /etc/nginx/sites-available/olamidepanel

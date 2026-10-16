@@ -6,6 +6,7 @@ from urllib.parse import urlencode,quote,urlsplit
 from urllib.error import HTTPError,URLError
 from cryptography.fernet import Fernet
 from database import connect
+from fulfillment import enqueue
 
 ADAPTERS={'stripe','paystack'}
 PROVIDERS=['stripe','paystack','paypal','flutterwave','square','adyen','authorize_net','braintree','mollie','razorpay','checkout_com','worldpay','opay','monnify','bank_transfer']
@@ -67,11 +68,12 @@ def verify(payment,gateway,keys):
     if not mode_valid or not identity or type(amount) is not int or amount!=payment['amount_cents'] or currency!=payment['currency'] or mode!=(gateway['mode']=='live'):
         raise ValueError('Provider identity, amount, currency or test/live mode mismatch')
     with connect() as con:
-        current=con.execute('SELECT state FROM payment_transactions WHERE id=? FOR UPDATE',(payment['id'],)).fetchone()
+        current=con.execute('SELECT * FROM payment_transactions WHERE id=? FOR UPDATE',(payment['id'],)).fetchone()
         if paid and current['state']!='paid':
             con.execute("UPDATE payment_transactions SET state='paid',verified_at=? WHERE id=?",(int(time.time()),payment['id']))
             audit(con,{'username':'provider-verification'},'verified payment '+str(payment['id']))
-    return {'ok':True,'paid':paid,'state':'paid' if paid else payment['state']}
+        if paid and gateway['mode']=='live':enqueue(con,{**current,'state':'paid'})
+    return {'ok':True,'paid':paid,'state':'paid' if paid else payment['state'],'provisioning':'queued' if paid and gateway['mode']=='live' else 'not_eligible'}
 
 def handle(method,path,user,body=None):
     suffix=path.removeprefix('/api/payments/')
@@ -130,7 +132,7 @@ def handle(method,path,user,body=None):
             audit(con,user,'gateway saved '+str(gid))
         return 200,{'ok':True,'id':gid}
     if suffix=='checkout':
-        if body.get('confirmed') is not True:raise ValueError('Confirm one-time payment and manual hosting activation')
+        if body.get('confirmed') is not True:raise ValueError('Confirm one-time payment and automatic account activation')
         origin=public_url()
         with connect() as con:
             order=con.execute('SELECT * FROM hosting_orders WHERE id=? AND owner=? FOR UPDATE',(int(body['order_id']),user['id'])).fetchone()

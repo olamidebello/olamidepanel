@@ -119,8 +119,7 @@ class PanelTest(unittest.TestCase):
         _,again=marketplace.handle('POST','/api/marketplace/orders/create',user,request)
         self.assertEqual(order['id'],again['id']);self.assertTrue(again['duplicate'])
         with self.assertRaises(ValueError):marketplace.handle('POST','/api/marketplace/orders/create',user,{**request,'request_key':'integration-request-0002','expected_price_cents':100})
-        _,approved=marketplace.handle('POST','/api/marketplace/orders/action',admin,{'id':order['id'],'action':'approve','operator_note':'Manual follow-up'})
-        self.assertEqual(approved['status'],'approved')
+        self.assertEqual(order['status'],'approved')
         with self.assertRaises(ValueError):marketplace.handle('POST','/api/marketplace/orders/action',user,{'id':order['id'],'action':'cancel'})
         with self.p.db() as con:
             saved=con.execute('SELECT * FROM hosting_orders WHERE id=?',(order['id'],)).fetchone()
@@ -147,8 +146,7 @@ class PanelTest(unittest.TestCase):
         self.assertNotIn(pid,[p['id'] for p in visible])
         self.assertEqual(marketplace.handle('POST','/api/marketplace/orders/action',users['sellerone'],{'id':order['id'],'action':'approve'})[0],404)
         marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':users['sellerone']['id'],'enabled':True})
-        _,approved=marketplace.handle('POST','/api/marketplace/orders/action',users['sellerone'],{'id':order['id'],'action':'approve'})
-        self.assertEqual(approved['status'],'approved')
+        self.assertEqual(order['status'],'approved')
     def test_gateway_credentials_encrypted_and_scoped(self):
         import payments
         from cryptography.fernet import Fernet

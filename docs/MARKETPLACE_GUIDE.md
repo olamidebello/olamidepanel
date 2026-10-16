@@ -1,5 +1,7 @@
 > Payment update: Stripe/Paystack hosted checkout and verification adapters are now available for merchant testing. See [Payments guide](PAYMENTS_GUIDE.md). Statements below about no connected payment processing describe the original order-review workflow; billing, renewals, refunds and hosting provisioning remain unimplemented.
 
+> Current paid-service behavior: verified live Stripe/Paystack payments automatically activate supported panel hosting/reseller resources. See [automatic provisioning](AUTOMATIC_PROVISIONING.md) for scope, deployment and limitations; this supersedes older manual-activation descriptions below.
+
 # Hosting marketplace and dashboards
 
 ## Available workflows

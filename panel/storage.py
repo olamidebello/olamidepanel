@@ -7,6 +7,10 @@ ARCHIVE_MAX=64*1024**2
 QUOTA=250*1024**2
 COUNT_MAX=10000
 
+def quota(uid):
+    from fulfillment import limits
+    return limits(uid)['disk_bytes']
+
 def home(uid):
     root=DATA/'homes'/str(int(uid));root.mkdir(parents=True,exist_ok=True,mode=0o700);return root
 
@@ -43,7 +47,7 @@ def write(uid,target,data):
     if target==home(uid) or not target.parent.is_dir():raise ValueError('Choose a file with an existing parent folder')
     if len(data)>FILE_MAX:raise ValueError('File limit is 8 MiB')
     used,count=usage(home(uid));prior=target.stat().st_size if target.is_file() else 0
-    if used-prior+len(data)>QUOTA or (not target.exists() and count>=COUNT_MAX):raise ValueError('Account storage quota exceeded')
+    if used-prior+len(data)>quota(uid) or (not target.exists() and count>=COUNT_MAX):raise ValueError('Account storage quota exceeded')
     fd,temp=tempfile.mkstemp(dir=target.parent,prefix='.panel-write-')
     try:
         with os.fdopen(fd,'wb') as f:f.write(data)
@@ -85,7 +89,7 @@ def extract(uid,data,destination):
             names.add(name.as_posix());total+=info.file_size
             if total>ARCHIVE_MAX:raise ValueError('Expanded archive limit is 64 MiB')
         used,count=usage(home(uid))
-        if used+total>QUOTA or count+len(infos)>COUNT_MAX:raise ValueError('Account quota exceeded')
+        if used+total>quota(uid) or count+len(infos)>COUNT_MAX:raise ValueError('Account quota exceeded')
         stage=Path(tempfile.mkdtemp(dir=destination.parent,prefix='.panel-extract-'))
         try:
             actual=0
@@ -118,7 +122,7 @@ def handle(method,route,user,body=None):
     if method=='GET':
         with lock(uid):
             if parsed.path=='/api/storage/usage':
-                used,count=usage(root);return {'used_bytes':used,'quota_bytes':QUOTA,'files':count,'file_limit':COUNT_MAX}
+                used,count=usage(root);return {'used_bytes':used,'quota_bytes':quota(uid),'files':count,'file_limit':COUNT_MAX}
             if parsed.path=='/api/storage/files':
                 target=path(uid,name)
                 if target.is_file():
@@ -176,7 +180,7 @@ def handle(method,route,user,body=None):
             if dest.exists():raise ValueError('Choose an unused archive destination')
             data=zip_data(root,target)
             used,count=usage(root)
-            if used+len(data)>QUOTA or count>=COUNT_MAX:raise ValueError('Account quota exceeded')
+            if used+len(data)>quota(uid) or count>=COUNT_MAX:raise ValueError('Account quota exceeded')
             dest.write_bytes(data);dest.chmod(0o600)
         elif action=='extract':
             if target.stat().st_size>ARCHIVE_MAX:raise ValueError('Archive too large')

@@ -143,3 +143,29 @@ CREATE TABLE IF NOT EXISTS website_controls (
  updated BIGINT NOT NULL,
  FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS provisioning_jobs (
+ order_id BIGINT NOT NULL PRIMARY KEY,
+ payment_id BIGINT NOT NULL UNIQUE,
+ state VARCHAR(24) NOT NULL,
+ attempts INT NOT NULL DEFAULT 0,
+ next_attempt BIGINT NOT NULL,
+ message VARCHAR(500) NOT NULL,
+ updated BIGINT NOT NULL,
+ INDEX provisioning_ready (state,next_attempt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS hosting_services (
+ order_id BIGINT NOT NULL PRIMARY KEY,
+ payment_id BIGINT NOT NULL UNIQUE,
+ owner BIGINT NOT NULL,
+ seller_id BIGINT NOT NULL,
+ kind VARCHAR(16) NOT NULL,
+ disk_bytes BIGINT NOT NULL,
+ websites INT NOT NULL,
+ bandwidth_gb BIGINT NOT NULL,
+ state VARCHAR(24) NOT NULL,
+ activated_at BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ role_granted BOOLEAN NOT NULL DEFAULT FALSE,
+ INDEX services_owner (owner,state,expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

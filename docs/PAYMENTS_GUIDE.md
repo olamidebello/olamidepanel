@@ -1,5 +1,7 @@
 # Payment gateway administration
 
+> Current paid-service behavior: verified live Stripe/Paystack payments automatically activate supported panel hosting/reseller resources. See [automatic provisioning](AUTOMATIC_PROVISIONING.md) for scope, deployment and limitations; this supersedes older manual-activation descriptions below.
+
 ## Scope and adapter status
 
 Stripe and Paystack have hosted checkout creation, payment verification and signed-webhook adapters in this release. They are **not merchant-tested or live-certified** in the authoring workspace. Other provider names in the GUI are an integration catalog, explicitly marked not implemented; their controls cannot be enabled. There is no universal “all payment gateways” API.

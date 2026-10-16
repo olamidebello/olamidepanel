@@ -1,0 +1,8 @@
+[Unit]
+Description=Reconcile paid service activation every minute
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+Unit=olamidepanel-fulfillment.service
+[Install]
+WantedBy=timers.target

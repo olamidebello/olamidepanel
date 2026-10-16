@@ -1,5 +1,7 @@
 # OlamidePanel
 
+> Current paid-service behavior: verified live Stripe/Paystack payments automatically activate supported panel hosting/reseller resources. See [automatic provisioning](docs/AUTOMATIC_PROVISIONING.md) for scope, deployment and limitations; this supersedes older manual-activation descriptions below.
+
 Independent Debian 12 hosting-panel foundation, inspired by the hosting-user and server-admin workflows in the supplied cPanel/WHM inventory. This is **not cPanel**, is not affiliated with cPanel, and does not reproduce its proprietary implementation or licensed add-ons. **Not production-ready or a complete cPanel replacement.**
 
 ## Documentation

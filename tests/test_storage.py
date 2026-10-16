@@ -6,6 +6,7 @@ import storage
 
 class StorageTest(unittest.TestCase):
  def setUp(self):
+  self.quota_patch=patch.object(storage,'quota',side_effect=lambda uid:storage.QUOTA);self.quota_patch.start();self.addCleanup(self.quota_patch.stop)
   self.tmp=tempfile.TemporaryDirectory();self.patch=patch.object(storage,'DATA',Path(self.tmp.name));self.patch.start();self.user={'id':11,'role':'user'}
  def tearDown(self):self.patch.stop();self.tmp.cleanup()
  def action(self,**body):return storage.handle('POST','/api/storage/files',self.user,body)

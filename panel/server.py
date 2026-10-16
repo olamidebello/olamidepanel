@@ -185,7 +185,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not allowed(u, 'domains.write'): return self.reply(403, {'error':'Read-only access'})
                 name=body['name'].lower().rstrip('.')
                 if len(name)>253 or not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',name): raise ValueError('Enter a valid domain name')
-                with db() as con: con.execute('INSERT INTO domains(owner,name,created) VALUES(?,?,?)',(u['id'],name,int(time.time())))
+                with db() as con:
+                    con.execute('SELECT id FROM users WHERE id=? FOR UPDATE',(u['id'],)).fetchone()
+                    services=con.execute('SELECT order_id FROM hosting_services WHERE owner=? LIMIT 1',(u['id'],)).fetchone()
+                    if services:
+                        allocation=con.execute("SELECT COALESCE(SUM(websites),0) AS sites FROM hosting_services WHERE owner=? AND state='active' AND expires_at>?",(u['id'],int(time.time()))).fetchone()
+                        used=con.execute('SELECT COUNT(*) AS total FROM domains WHERE owner=?',(u['id'],)).fetchone()
+                        if used['total']>=allocation['sites']:raise ValueError('Purchased website allocation exceeded or expired')
+                    con.execute('INSERT INTO domains(owner,name,created) VALUES(?,?,?)',(u['id'],name,int(time.time())))
                 result={'ok':True,'status':'Domain saved. Open Site Publisher for DNS-verified static website publishing.'}
             elif self.path == '/api/users' and allowed(u, 'users.manage'):
                 role=body.get('role','user')

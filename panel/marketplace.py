@@ -1,4 +1,4 @@
-"""Plan catalog and manual-review orders. No payment or hosting provisioning."""
+"""Plan catalog, paid orders and automatic panel resource activation."""
 import json, re, time
 from database import connect, IntegrityError
 
@@ -82,12 +82,16 @@ def handle(method,path,user,body=None):
                 if scope=='store':
                     if not admin and user['role']!='reseller':return 403,{'error':'Seller access required'}
                     if not admin:query='SELECT o.*,u.username FROM hosting_orders o JOIN users u ON u.id=o.owner WHERE o.seller_id=?';args=(user['id'],)
-                return 200,con.execute(query+' ORDER BY o.id DESC LIMIT 200',args).fetchall()
+                rows=con.execute(query+' ORDER BY o.id DESC LIMIT 200',args).fetchall()
+                for row in rows:
+                    row['provisioning']=con.execute('SELECT state,message,attempts FROM provisioning_jobs WHERE order_id=?',(row['id'],)).fetchone()
+                    row['service']=con.execute('SELECT kind,state,disk_bytes,websites,bandwidth_gb,activated_at,expires_at FROM hosting_services WHERE order_id=?',(row['id'],)).fetchone()
+                return 200,rows
             if suffix=='summary':
                 where='' if admin else ' WHERE owner=?';args=() if admin else (user['id'],)
                 if user['role']=='reseller':where=' WHERE owner=? OR seller_id=?';args=(user['id'],user['id'])
                 counts=con.execute('SELECT status,COUNT(*) AS total FROM hosting_orders'+where+' GROUP BY status',args).fetchall()
-                return 200,{'scope':'all_accounts' if admin else ('reseller_store' if user['role']=='reseller' else 'your_account'),'counts':{r['status']:r['total'] for r in counts},'enabled_plans':con.execute("SELECT COUNT(*) AS total FROM hosting_plans p WHERE p.enabled=1 AND (p.seller_id=0 OR EXISTS (SELECT 1 FROM marketplace_vendors v JOIN users u ON u.id=v.user_id WHERE v.user_id=p.seller_id AND v.enabled=1 AND u.active=1 AND u.role='reseller'))").fetchone()['total'],'payment_processing':False,'automatic_provisioning':False}
+                return 200,{'scope':'all_accounts' if admin else ('reseller_store' if user['role']=='reseller' else 'your_account'),'counts':{r['status']:r['total'] for r in counts},'enabled_plans':con.execute("SELECT COUNT(*) AS total FROM hosting_plans p WHERE p.enabled=1 AND (p.seller_id=0 OR EXISTS (SELECT 1 FROM marketplace_vendors v JOIN users u ON u.id=v.user_id WHERE v.user_id=p.seller_id AND v.enabled=1 AND u.active=1 AND u.role='reseller'))").fetchone()['total'],'payment_processing':True,'automatic_provisioning':True}
         return 404,{'error':'Unknown marketplace operation'}
     if method!='POST':return 405,{'error':'Unsupported method'}
     if user['role']=='readonly':return 403,{'error':'Read-only access'}
@@ -137,7 +141,7 @@ def handle(method,path,user,body=None):
         pid=integer(body,'plan_id',1,2**63-1)
         key=body.get('request_key',''); note=str(body.get('note','')).strip()
         if not re.fullmatch(r'[a-zA-Z0-9_-]{16,64}',str(key)) or len(note)>1000:raise ValueError('Invalid request key or order note')
-        if body.get('confirmed') is not True:raise ValueError('Confirm the order request and manual provisioning notice')
+        if body.get('confirmed') is not True:raise ValueError('Confirm the order and automatic activation after verified payment')
         with connect() as con:
             existing=con.execute('SELECT id FROM hosting_orders WHERE owner=? AND request_key=?',(user['id'],key)).fetchone()
             if existing:return 200,{'ok':True,'id':existing['id'],'duplicate':True}
@@ -150,13 +154,21 @@ def handle(method,path,user,body=None):
             if type(body.get('expected_price_cents')) is not int or body['expected_price_cents']!=plan['price_cents']:raise ValueError('Plan price changed. Reload the catalog and confirm the current price.')
             snapshot=json.dumps({k:plan[k] for k in ['name','description','price_cents','disk_gb','bandwidth_gb','websites','seller_id','plan_kind']})
             try:
-                uid=con.execute('INSERT INTO hosting_orders(owner,seller_id,plan_id,request_key,plan_snapshot,price_cents,currency,status,note,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(user['id'],plan['seller_id'],pid,key,snapshot,plan['price_cents'],'USD','pending',note,int(time.time()),int(time.time()))).lastrowid
+                uid=con.execute('INSERT INTO hosting_orders(owner,seller_id,plan_id,request_key,plan_snapshot,price_cents,currency,status,note,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(user['id'],plan['seller_id'],pid,key,snapshot,plan['price_cents'],'USD','approved' if plan['price_cents']>0 else 'pending',note,int(time.time()),int(time.time()))).lastrowid
             except IntegrityError:
                 existing=con.execute('SELECT id FROM hosting_orders WHERE owner=? AND request_key=? FOR UPDATE',(user['id'],key)).fetchone()
                 if not existing:raise
                 return 200,{'ok':True,'id':existing['id'],'duplicate':True}
             audit(con,user,'order requested '+str(uid))
-        return 200,{'ok':True,'id':uid,'status':'pending','message':'Request recorded. No payment collected or hosting provisioned.'}
+        return 200,{'ok':True,'id':uid,'status':'approved' if plan['price_cents']>0 else 'pending','message':'Order recorded. Complete payment to activate account resources automatically.'}
+    if suffix=='orders/retry':
+        uid=integer(body,'id',1,2**63-1)
+        with connect() as con:
+            order=con.execute('SELECT * FROM hosting_orders WHERE id=? FOR UPDATE',(uid,)).fetchone()
+            if not order or (not admin and not (user['role']=='reseller' and order['seller_id']==user['id'])):return 403,{'error':'Store administrator access required'}
+            con.execute("UPDATE provisioning_jobs SET state='queued',attempts=0,next_attempt=?,updated=?,message='Operator requested activation retry' WHERE order_id=? AND state='needs_attention'",(int(time.time()),int(time.time()),uid))
+            audit(con,user,'activation retry '+str(uid))
+        return 200,{'ok':True}
     if suffix=='orders/action':
         uid=integer(body,'id',1,2**63-1);action=body.get('action')
         with connect() as con:
