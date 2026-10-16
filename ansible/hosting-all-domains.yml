@@ -78,6 +78,7 @@
         #!/usr/bin/python3
         """Operator-authorized static hosting. Never adopts an existing virtual host."""
         import fcntl
+        import grp
         import html
         import ipaddress
         import json
@@ -280,7 +281,17 @@
                 except BlockingIOError:
                     print('A provisioning pass is already running')
                     return
-                print(json.dumps([provision(config, d) for d in config['domains']], indent=2))
+                results = [provision(config, d) for d in config['domains']]
+                try:
+                    panel_group = grp.getgrnam('olamidepanel').gr_gid
+                except KeyError:
+                    panel_group = None
+                panel_data = Path('/var/lib/olamidepanel')
+                if panel_group is not None and panel_data.is_dir():
+                    snapshot = panel_data / 'hosted-domains.json'
+                    atomic(snapshot, json.dumps({'updated_at': int(time.time()), 'domains': results}, indent=2) + '\n', 0o640)
+                    os.chown(snapshot, 0, panel_group)
+                print(json.dumps(results, indent=2))
 
         if __name__ == '__main__':
             main()
