@@ -14,6 +14,8 @@ class SiteControlTests(unittest.TestCase):
    with self.assertRaises(ValueError):site_controls.validate({**s,**patch_value},'example.com')
   for rule in [{'path':'/.secret','target':'https://example.net','status':302},{'path':'/x','target':'https://example.net/$http_cookie','status':302},{'path':'/x','target':'https://user:pass@example.net','status':302},{'path':'/x','target':'https://example.com/x','status':302}]:
    with self.assertRaises(ValueError):site_controls.validate({**s,'redirects':[rule]},'example.com')
+ def test_old_error_documents_remain_internal_after_disabling_custom_pages(self):
+  self.assertIn('location ^~ /_panel-errors/ { internal; }',site_controls.nginx(site_controls.defaults(),'example.com'))
  def test_rejects_cross_owner_and_stale_writes(self):
   user={'id':7,'role':'user','username':'test'};body={'domain_id':1,'revision':0,'settings':site_controls.defaults()}
   with patch.object(site_controls,'connect') as db:

@@ -52,7 +52,7 @@ def nginx(settings,domain):
  for ip in s['blocked_ips']:lines.append('deny '+ip+';')
  for r in s['redirects']:lines.append('location = '+r['path']+' { return '+str(r['status'])+' "'+r['target']+'"; }')
  for code in s['errors']:lines.append('error_page '+code+' /_panel-errors/'+code+'.html;')
- if s['errors']:lines.append('location ^~ /_panel-errors/ { internal; }')
+ lines.append('location ^~ /_panel-errors/ { internal; }')
  if s['hotlink']:
   lines+=['location ~* \\.(?:gif|jpe?g|png|webp|svg|ico)$ {',' valid_referers none blocked server_names '+ ' '.join(s['referers'])+';', ' if ($invalid_referer) { return 403; }',' try_files $uri =404;','}']
  return '\n'.join(lines)+'\n'

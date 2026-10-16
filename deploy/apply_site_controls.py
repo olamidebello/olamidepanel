@@ -23,13 +23,13 @@ def apply(site,target,include,settings,domain,check,reload):
  errors=site/'_panel-errors'
  if errors.is_symlink():raise ValueError('Unsafe error-page directory')
  errors.mkdir(exist_ok=True,mode=0o755)
- # Do not delete old error documents while an older validated config may reference them.
- for code,message in settings['errors'].items():
-  file=errors/(code+'.html')
-  if file.is_symlink():raise ValueError('Unsafe error document')
-  prior_errors[file]=file.read_bytes() if file.exists() else None
-  file.write_text(page('HTTP '+code,message));file.chmod(0o644)
  try:
+  # Do not delete old error documents while an older validated config may reference them.
+  for code,message in settings['errors'].items():
+   file=errors/(code+'.html')
+   if file.is_symlink():raise ValueError('Unsafe error document')
+   prior_errors[file]=file.read_bytes() if file.exists() else None
+   file.write_text(page('HTTP '+code,message));file.chmod(0o644)
   include.write_text(nginx(settings,domain));include.chmod(0o644)
   target.write_text(prepare_config(original,include))
   check();reload()
