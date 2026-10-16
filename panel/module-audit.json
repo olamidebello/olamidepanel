@@ -810,10 +810,10 @@
   {
     "category": "Advanced",
     "name": "Track DNS",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+    "status": "implemented",
+    "source": "panel/dns_tools.py",
+    "api": "POST /api/dns/lookup",
+    "detail": "Authenticated read-only A/AAAA/CNAME/MX/NS/TXT/SOA/CAA queries with bounded resolver timeout. No DNS zone mutations."
   },
   {
     "category": "Advanced",
@@ -898,10 +898,10 @@
   {
     "category": "Preferences",
     "name": "User Manager",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing corresponding persisted settings or team membership model, authorization and GUI workflow."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Preferences",
@@ -962,18 +962,18 @@
   {
     "category": "Administration",
     "name": "List Accounts",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Administration",
     "name": "Suspended Accounts",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Administration",
@@ -986,18 +986,18 @@
   {
     "category": "Administration",
     "name": "Account Suspension",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Administration",
     "name": "Account Termination",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Administration",
@@ -1042,10 +1042,10 @@
   {
     "category": "Administration",
     "name": "Resellers",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
   },
   {
     "category": "Administration",

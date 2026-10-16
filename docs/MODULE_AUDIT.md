@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-16 against source, not a live server certification. Each named GUI tool is listed below. “Implemented” is limited to the stated scope; “partial” exposes working operations alongside explicit gaps. Unit checks passed locally; MySQL integration, browser and production deployment checks remain unconfirmed for this batch.
 
-176 tools: 9 implemented in the stated scope, 18 partial, 149 not implemented.
+176 tools: 16 implemented in the stated scope, 18 partial, 142 not implemented.
 
 Ansible installs and configures existing code and prerequisites; it cannot generate or complete missing service adapters. Planned cards remain marked Planned. The admin Module Readiness screen exposes this same inventory.
 
@@ -151,7 +151,7 @@ Ansible installs and configures existing code and prerequisites; it cannot gener
 |---|---|---|---|
 | Terminal | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
 | Cron Jobs | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
-| Track DNS | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
+| Track DNS | implemented | panel/dns_tools.py / POST /api/dns/lookup | Authenticated read-only A/AAAA/CNAME/MX/NS/TXT/SOA/CAA queries with bounded resolver timeout. No DNS zone mutations. |
 | Indexes | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
 | Error Pages | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
 | Apache Handlers | not implemented | panel/static/app.js (planned card only) / None | Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations. |
@@ -167,7 +167,7 @@ Ansible installs and configures existing code and prerequisites; it cannot gener
 | Language | not implemented | panel/static/app.js (planned card only) / None | Missing corresponding persisted settings or team membership model, authorization and GUI workflow. |
 | Contact Information | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Account Preferences | not implemented | panel/static/app.js (planned card only) / None | Missing corresponding persisted settings or team membership model, authorization and GUI workflow. |
-| User Manager | not implemented | panel/static/app.js (planned card only) / None | Missing corresponding persisted settings or team membership model, authorization and GUI workflow. |
+| User Manager | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Manage Team | not implemented | panel/static/app.js (planned card only) / None | Missing corresponding persisted settings or team membership model, authorization and GUI workflow. |
 
 ## Administration
@@ -180,17 +180,17 @@ Ansible installs and configures existing code and prerequisites; it cannot gener
 | Access Control | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Create Panel User | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Audit Log | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
-| List Accounts | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
-| Suspended Accounts | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
+| List Accounts | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
+| Suspended Accounts | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Account Provisioning | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
-| Account Suspension | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
-| Account Termination | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
+| Account Suspension | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
+| Account Termination | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Shell Access | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | IP Assignment | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | Bandwidth Limits | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | Packages | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | Feature Manager | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
-| Resellers | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
+| Resellers | implemented | panel/server.py; panel/schema.sql / /api/profile; /api/users; /api/users/update; /api/audit | Panel account/profile/password/role and audit operations only; panel root does not grant Linux root. |
 | Server Configuration | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | Hostname and Resolvers | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |
 | IP Management | not implemented | panel/static/app.js (planned card only) / None | Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only. |

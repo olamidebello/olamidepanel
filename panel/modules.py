@@ -8,6 +8,7 @@ MODULES=[
  ('MySQL','implemented','Internal panel database. Customer database provisioning is not implemented.'),
  ('TLS and installation','partial','Panel HTTPS/Nginx deployment and static-site TLS worker. Other customer hosting runtimes remain unavailable.'),
  ('Mail hosting','not implemented','Mailbox, routing, spam filtering, webmail and mail DNS adapters required.'),
+ ('DNS lookups','implemented','Read-only DNS record lookup. No zone configuration changes.'),
  ('DNS hosting','not implemented','Authoritative zones, DNSSEC and provider integration required.'),
  ('Customer databases','not implemented','Tenant database/user provisioning and privileges required.'),
  ('Backups and restore','partial','Five manual account-file ZIP snapshots and non-destructive folder restoration. No database, mail or full-server recovery/scheduling.'),

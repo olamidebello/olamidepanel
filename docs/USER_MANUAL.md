@@ -135,3 +135,11 @@ Do not send passwords, private keys or full database configuration in support sc
 ## Files, backups and authenticator protection
 
 See [Files and MFA](FILES_AND_MFA.md) for uploads/downloads, archives, image tools, account usage, snapshot restoration and two-factor enrollment. Administration → Module Readiness lists every tool's actual implementation scope. See [Module audit](MODULE_AUDIT.md) for remaining work.
+
+## Working tools and module requirements
+
+The default filter is now Available. All tools still lists planned entries with their status. Opening an unfinished tool shows its implementation requirements and a return to working tools; it does not perform server changes. Administration → Module Readiness tracks outstanding backend work.
+
+Advanced → Track DNS queries A, AAAA, CNAME, MX, NS, TXT, SOA and CAA records, with a four-second resolver timeout. It does not modify DNS zones.
+
+Super admins can use User Manager, List Accounts, Suspended Accounts, Account Suspension, Account Termination and Resellers to search panel accounts and manage lower-level users through the existing MySQL user APIs. Account Termination lists suspended accounts; Manage account requires exact username confirmation for deletion. Files remain for operator recovery. These tools manage panel accounts, not Linux hosting users.

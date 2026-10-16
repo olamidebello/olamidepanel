@@ -11,6 +11,7 @@ import modules
 import websites
 import storage
 import mfa
+import dns_tools
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -148,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/dns/lookup':return self.reply(200,dns_tools.lookup(body))
             if self.path=='/api/mfa':
                 with db() as con:row=con.execute('SELECT salt,password FROM users WHERE id=?',(u['id'],)).fetchone()
                 if not hmac.compare_digest(password_hash(body.get('current_password',''),row['salt']),row['password']):raise ValueError('Current password is incorrect')

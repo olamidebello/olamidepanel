@@ -1,11 +1,11 @@
 const $=id=>document.getElementById(id);let marketplaceMenu=[],selectedStore=null;let me,category='Overview',cwd='';
 const groups={Marketplace:['Marketplace Dashboard','Hosting Plans','Browse Stores','My Orders','Reseller Catalog','Store Orders','Store Settings','Payment Gateways','Payments'],Files:['File Manager','Images','Directory Privacy','Disk Usage','FTP Accounts','FTP Connections','Anonymous FTP','Web Disk','Git Version Control','Git Deployment','Backups','Backup Wizard','File Restoration'],Domains:['Domains','Redirects','DNS Zone Editor','Dynamic DNS','Site Publisher','Site Builder','SEO','Social Media'],Email:['Email Accounts','Forwarders','Domain Forwarders','Autoresponders','Default Address','Email Routing','Email Filters','Global Filters','Email Deliverability','Email Disk Usage','Address Importer','Archive','Mailing Lists','BoxTrapper','Greylisting','Encryption','Calendars and Contacts','Calendar Sharing','Calendar Delegation','Spam Filters','Track Delivery','Webmail'],Databases:['Database Manager','Database Users','Database Wizard','phpMyAdmin','Remote Database Access','PostgreSQL','PostgreSQL Wizard','phpPgAdmin'],Security:['SSH Access','IP Blocker','SSL/TLS','Private Keys','Certificate Signing Requests','Certificates','SSL Sites','SSL Status','AutoSSL','ModSecurity','Hotlink Protection','Leech Protection','Two-Factor Authentication','API Tokens','Security Policy'],Software:['PHP Manager','PHP-FPM','PHP INI Editor','Application Manager','Environment Variables','Application Dependencies','Optimize Website','Perl Modules','PEAR Packages','RubyGems','Ruby on Rails','Application Installer'],Metrics:['Server Metrics','Visitors','Errors','Bandwidth','Raw Access','AWStats','Analog Stats','Webalizer','FTP Statistics','Metrics Editor','Resource Usage','Site Monitoring'],Advanced:['Terminal','Cron Jobs','Track DNS','Indexes','Error Pages','Apache Handlers','MIME Types','API Shell','Virus Scanner'],Preferences:['Password and Security','Language','Contact Information','Account Preferences','User Manager','Manage Team'],Administration:['Module Readiness','Reseller Access','Hosting Catalog','Access Control','Create Panel User','Audit Log','List Accounts','Suspended Accounts','Account Provisioning','Account Suspension','Account Termination','Shell Access','IP Assignment','Bandwidth Limits','Packages','Feature Manager','Resellers','Server Configuration','Hostname and Resolvers','IP Management','DNS Zones','DNS Templates','DNS Cluster','Configuration Cluster','Backup Configuration','Backup Restoration','Account Transfers','Apache Configuration','PHP Configuration','Mail Configuration','FTP Configuration','Service Manager','Log Rotation','Package Management','Database Services','Mail Queue','Delivery Reports','Brute Force Protection','Host Access Control','Compiler Access','Service Certificates','Process Manager','Task Queue','Service Restarts','System Reboot','Contact Manager','Hooks','Plugins','Branding','Themes and Locales','Support'],Integrations:['WP Toolkit','Softaculous','CloudLinux','LiteSpeed','JetBackup','Comet Backup','Imunify','External DNS/CDN','Billing','External Monitoring','AI Services']};
-const implemented=['Browse Stores','Store Orders','Store Settings','Two-Factor Authentication','Images','Disk Usage','Backups','Backup Wizard','File Restoration','Site Publisher','Payment Gateways','Payments','Module Readiness','Reseller Access','Reseller Catalog','Marketplace Dashboard','Hosting Plans','My Orders','Hosting Catalog','Contact Information','Password and Security','Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
+const implemented=['Track DNS','User Manager','List Accounts','Suspended Accounts','Account Suspension','Account Termination','Resellers','Browse Stores','Store Orders','Store Settings','Two-Factor Authentication','Images','Disk Usage','Backups','Backup Wizard','File Restoration','Site Publisher','Payment Gateways','Payments','Module Readiness','Reseller Access','Reseller Catalog','Marketplace Dashboard','Hosting Plans','My Orders','Hosting Catalog','Contact Information','Password and Security','Access Control','File Manager','Domains','Server Metrics','Create Panel User','Audit Log'];
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':me?.csrf||''}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let d=await r.json();throw Error(d.error)}return r.status===200&&r.headers.get('Content-Type')?.includes('json')?r.json():null}
 function guard(fn){return async(...args)=>{try{$('message').textContent='';await fn(...args)}catch(e){$('message').textContent=e.message}}}
 function form(fields,submit){let f=el('form');for(const [name,type]of fields){let l=el('label',name);let i=el(type==='textarea'?'textarea':'input');i.name=name;if(type!=='textarea')i.type=type;i.required=true;l.append(i);f.append(l)}f.append(el('button','Save'));f.onsubmit=guard(async e=>{e.preventDefault();await submit(Object.fromEntries(new FormData(f)));});return f}
-let toolFilter='all';
+let toolFilter='available';
 let favorites;
 try { favorites=JSON.parse(localStorage.getItem('olamide-favorites')||'[]'); if(!Array.isArray(favorites))favorites=[]; } catch { favorites=[]; }
 const navIcons={Marketplace:'▧',Overview:'◈',Files:'▤',Domains:'◎',Email:'✉',Databases:'▥',Security:'♧',Software:'⌘',Metrics:'▥',Advanced:'⌁',Preferences:'⚙',Administration:'▦',Integrations:'◇'};
@@ -24,11 +24,12 @@ function render(){
   if(g==='Marketplace'&&!marketplaceMenu.some(item=>item.name===name))continue;
   if(name==='Reseller Catalog'&&me.role!=='reseller')continue;
   if(name==='Payment Gateways'&&!me.permissions.includes('users.manage')&&me.role!=='reseller')continue;
+  if(['User Manager','List Accounts','Suspended Accounts','Account Suspension','Account Termination','Resellers'].includes(name)&&!me.permissions.includes('users.manage'))continue;
   const available=implemented.includes(name);
   if(!(name+' '+g).toLowerCase().includes($('search').value.toLowerCase()) || toolFilter==='available'&&!available || toolFilter==='favorites'&&!favorites.includes(name))continue;
   count++;let card=el('article',undefined,'card'),b=el('button',undefined,'tool-open');
   b.append(el('span',navIcons[g]||'◇','icon'),el('h3',name),el('p',g+' / '+(available?'Manage workspace':'Coming to your workspace')),el('span',available?name==='Domains'?'Inventory only':'Available':'Planned',available?'badge':'badge pending'));
-  b.onclick=guard(()=>open(name));
+  b.onclick=guard(()=>available?open(name):moduleStatusView(name));
   let star=el('button',favorites.includes(name)?'★':'☆','favorite');star.setAttribute('aria-label',(favorites.includes(name)?'Unpin ':'Pin ')+name);star.setAttribute('aria-pressed',String(favorites.includes(name)));
   star.onclick=()=>{favorites=favorites.includes(name)?favorites.filter(n=>n!==name):[...favorites,name];try{localStorage.setItem('olamide-favorites',JSON.stringify(favorites))}catch{}render()};
   card.append(b,star);$('tools').append(card);
@@ -37,7 +38,7 @@ function render(){
  if(!count)$('tools').append(el('div',toolFilter==='favorites'?'Star a tool to make it a favorite.':'No tools match. Try another search or category.','empty-state'));
  document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.filter===toolFilter);b.setAttribute('aria-pressed',String(b.dataset.filter===toolFilter))});
 }
-async function openBase(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){d.append(el('p','This module is not implemented. No server changes are made. It requires a tested service adapter or an external licensed integration.'));return}
+async function openBase(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){await moduleStatusView(name);return}
 if(name==='Access Control'){
  d.append(el('p','Manage panel roles and suspend or restore lower-level accounts. Panel root controls OlamidePanel permissions; Linux root privileges are not granted.'));
  const [roles,users]=await Promise.all([api('roles'),api('users')]);
@@ -92,10 +93,14 @@ async function accountEditor(user){
  dialog.append(status);dialog.addEventListener('close',()=>{dialog.remove();guard(()=>open('Access Control'))()});document.body.append(dialog);dialog.showModal();
 }
 async function open(name){
+ const accountTools=['User Manager','List Accounts','Suspended Accounts','Account Suspension','Account Termination','Resellers'];
+ if(accountTools.includes(name)){if(!me.permissions.includes('users.manage'))throw Error('Super-admin access required');await accountToolsView(name);return;}
+ if(!implemented.includes(name)){await moduleStatusView(name);return;}
  if(groups.Marketplace.includes(name)&&!marketplaceMenu.some(item=>item.name===name))throw Error('This marketplace menu is unavailable for your account');
  if(location.hash!=='#tool='+encodeURIComponent(name))history.pushState(null,'','#tool='+encodeURIComponent(name));
  if(groups.Marketplace.includes(name)){category='Marketplace';render()}
  await openBase(name);const d=$('detail');
+ if(name==='Track DNS'){await dnsView(d);return;}
  if(name==='Two-Factor Authentication'){await mfaView(d);return;}
  if(['Images','Disk Usage','Backups','Backup Wizard','File Restoration'].includes(name)){await storageView(name,d);return;}
  if(name==='Site Publisher'){await publisherView(d);return;}
@@ -296,3 +301,22 @@ async function restoreNavigation(){
  render();
 }
 window.addEventListener('popstate',()=>{if(me)guard(restoreNavigation)()});
+
+async function accountToolsView(name){
+ category='Administration';render();if(location.hash!=='#tool='+encodeURIComponent(name))history.pushState(null,'','#tool='+encodeURIComponent(name));
+ const d=$('detail');d.replaceChildren(el('h2',name),el('p','Manage OlamidePanel accounts. Linux hosting accounts and their resources require separate provisioning.'));d.hidden=false;
+ const roles=await api('roles'),users=await api('users');const level=roles.find(r=>r.role===me.role)?.level||0;
+ const search=el('input');search.type='search';search.placeholder='Search panel accounts';search.setAttribute('aria-label','Search panel accounts');const list=el('div');d.append(search,list);
+ const draw=()=>{list.replaceChildren();for(const user of users.filter(u=>(name!=='Suspended Accounts'||!u.active)&&(name!=='Account Termination'||!u.active)&&(name!=='Resellers'||u.role==='reseller')&&(u.username+' '+u.role).toLowerCase().includes(search.value.toLowerCase()))){const row=el('article',undefined,'account-row');row.append(el('strong',user.username),el('p',user.role+' · '+(user.active?'Active':'Suspended')));const target=roles.find(r=>r.role===user.role)?.level??100;
+ if(user.id!==me.id&&target<level){const manage=el('button','Manage account');manage.onclick=guard(()=>accountEditor(user));const suspend=el('button',user.active?'Suspend':'Restore');suspend.onclick=guard(async()=>{await api('users/update',{id:user.id,role:user.role,active:!user.active});await accountToolsView(name)});row.append(manage,suspend)}else row.append(el('span','Protected account','badge'));list.append(row)}if(!list.children.length)list.append(el('p','No matching accounts.'))};search.oninput=draw;draw();const add=el('button','Create panel user');add.onclick=guard(()=>open('Create Panel User'));d.append(add);d.scrollIntoView({behavior:'smooth'});d.focus();
+}
+async function dnsView(d){
+ d.append(el('p','Look up public DNS records. This tool reads DNS; it does not create or edit zones.'));
+ const result=el('pre');result.setAttribute('aria-live','polite');const f=form([['name','text']],async b=>{result.textContent='Looking up DNS…';try{result.textContent=JSON.stringify(await api('dns/lookup',{...b,type:f.elements.record_type.value}),null,2)}catch(e){result.textContent=e.message}});const select=el('select');select.name='record_type';select.setAttribute('aria-label','DNS record type');for(const type of ['A','AAAA','CNAME','MX','NS','TXT','SOA','CAA']){const option=el('option',type);option.value=type;select.append(option)}f.insertBefore(select,f.lastElementChild);f.lastElementChild.textContent='Look up records';d.append(f,result);
+}
+async function moduleStatusView(name){
+ const d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;
+ d.append(el('p','This tool is not available yet. It requires additional backend implementation; installing packages alone will not enable it.'));
+ if(me.permissions.includes('users.manage')){const report=await api('modules');const tool=report.tools.find(t=>t.name===name);if(tool)d.append(el('p',tool.detail));const readiness=el('button','View module readiness');readiness.onclick=guard(()=>open('Module Readiness'));d.append(readiness)}
+ const available=el('button','Browse working tools');available.onclick=()=>{toolFilter='available';category='Overview';render()};d.append(available);d.scrollIntoView({behavior:'smooth'});
+}
