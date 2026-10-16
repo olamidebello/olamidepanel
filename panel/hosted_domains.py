@@ -28,9 +28,16 @@ def report(user, connect, snapshot=None):
                         status=str(row.get('status', 'unknown'))[:100],
                         checked_at=row.get('checked_at'), www=row.get('www', ''),
                         document_root=str(row.get('document_root', ''))[:500],
-                        configuration=str(row.get('configuration', ''))[:500])
+                        configuration=str(row.get('configuration', ''))[:500],
+                        deployment_status=str(row.get('deployment_status', ''))[:100],
+                        deployment_checked_at=row.get('deployment_checked_at'),
+                        backend=str(row.get('backend', ''))[:100],
+                        repo=str(row.get('repo', ''))[:200],
+                        commit=str(row.get('commit', ''))[:40],
+                        error=str(row.get('error', ''))[:500])
     except (OSError, ValueError, TypeError, KeyError):
         updated = None
         notice = 'Server hosting status is unavailable. Run the hosting playbook to export its domain inventory.'
     return {'domains': sorted(inventory.values(), key=lambda x:x['name']),
             'updated_at': updated, 'notice': notice}
+
