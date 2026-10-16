@@ -1,0 +1,74 @@
+---
+- name: Install continuous domain-account reconciliation on the panel server
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Install local Ansible runtime
+      ansible.builtin.apt:
+        name: ansible-core
+        state: present
+    - name: Check deployed domain account playbook is available
+      ansible.builtin.stat:
+        path: /opt/olamidepanel/repo/ansible/domain-ssh.yml
+      register: domain_playbook
+    - name: Require current panel source deployment
+      ansible.builtin.assert:
+        that: domain_playbook.stat.exists
+        fail_msg: Update /opt/olamidepanel/repo to the current release before enabling this timer.
+    - name: Create protected local inventory
+      ansible.builtin.copy:
+        content: |
+          [panel_servers]
+          localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+        dest: /etc/olamidepanel/domain-ssh-local.ini
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Store operator-approved domain SSH policy
+      ansible.builtin.copy:
+        content: '{{ {"domain_accounts_source": "panel", "domain_owner_ssh": domain_owner_ssh | default({})} | to_nice_json }}'
+        dest: /etc/olamidepanel/domain-ssh-policy.json
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Install domain SSH reconciliation service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-domain-ssh.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Reconcile Linux domain users and SSH keys from OlamidePanel
+          After=network.target mysql.service
+          [Service]
+          Type=oneshot
+          User=root
+          UMask=0077
+          ExecStart=/usr/bin/ansible-playbook -i /etc/olamidepanel/domain-ssh-local.ini /opt/olamidepanel/repo/ansible/domain-ssh.yml -e @/etc/olamidepanel/domain-ssh-policy.json
+          TimeoutStartSec=15min
+    - name: Install domain SSH reconciliation timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-domain-ssh.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Reconcile domain SSH accounts every two minutes
+          [Timer]
+          OnBootSec=2min
+          OnUnitInactiveSec=2min
+          Unit=olamidepanel-domain-ssh.service
+          [Install]
+          WantedBy=timers.target
+    - name: Validate first domain reconciliation before enabling timer
+      ansible.builtin.systemd:
+        name: olamidepanel-domain-ssh.service
+        state: started
+        daemon_reload: true
+    - name: Enable continuous domain account reconciliation
+      ansible.builtin.systemd:
+        name: olamidepanel-domain-ssh.timer
+        state: started
+        enabled: true

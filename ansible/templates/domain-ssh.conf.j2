@@ -1,0 +1,28 @@
+# Managed by OlamidePanel Ansible. Included at EOF of sshd_config.
+# SSH uses the first applicable value. Specific user rules precede group defaults.
+{% for account in managed_domain_accounts %}
+{% set login = 'dom_' + (account.domain | hash('sha256'))[:16] %}
+Match User {{ login }}
+{% if account.access | default('sftp') == 'shell' %}
+    ChrootDirectory none
+    ForceCommand none
+    PermitTTY yes
+{% elif account.access | default('sftp') == 'sftp' %}
+    ForceCommand internal-sftp -d /home/{{ login }}
+{% endif %}
+{% endfor %}
+# Retained users omitted from a later inventory remain confined to SFTP.
+Match Group {{ domain_account_group }}
+    AuthenticationMethods publickey
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    AuthorizedKeysFile {{ domain_key_base }}/%u
+    DisableForwarding yes
+    PermitTunnel no
+    PermitUserRC no
+    X11Forwarding no
+    ChrootDirectory {{ domain_home_base }}/%u
+    ForceCommand internal-sftp -d /
+    PermitTTY no
+Match all

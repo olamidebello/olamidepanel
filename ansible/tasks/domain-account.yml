@@ -1,0 +1,93 @@
+---
+- name: Derive stable domain identity
+  ansible.builtin.set_fact:
+    domain_login: 'dom_{{ (domain_account.domain | hash("sha256"))[:16] }}'
+    domain_access: '{{ domain_account.access | default("sftp") }}'
+    domain_jail: '{{ domain_home_base }}/dom_{{ (domain_account.domain | hash("sha256"))[:16] }}'
+    domain_manifest: '{{ domain_manifest_base }}/{{ domain_account.domain }}.json'
+- name: Look up existing Linux identity
+  ansible.builtin.getent:
+    database: passwd
+    key: '{{ domain_login }}'
+    fail_key: false
+- name: Inspect managed identity marker
+  ansible.builtin.stat:
+    path: '{{ domain_manifest }}'
+  register: account_marker
+- name: Read managed identity marker
+  ansible.builtin.slurp:
+    src: '{{ domain_manifest }}'
+  register: account_marker_data
+  when: account_marker.stat.exists
+- name: Refuse to adopt unrelated identities or symlinked markers
+  ansible.builtin.assert:
+    that:
+      - not (account_marker.stat.islnk | default(false))
+      - (ansible_facts.getent_passwd[domain_login] | default(none)) is none or account_marker.stat.exists
+      - not account_marker.stat.exists or (account_marker_data.content | b64decode | from_json).domain == domain_account.domain
+      - not account_marker.stat.exists or (account_marker_data.content | b64decode | from_json).username == domain_login
+    fail_msg: Existing identity is not owned by this domain playbook. No account adoption is permitted.
+- name: Inspect domain jail path
+  ansible.builtin.stat:
+    path: '{{ domain_jail }}'
+  register: domain_jail_stat
+- name: Refuse to adopt unrelated domain storage
+  ansible.builtin.assert:
+    that:
+      - not (domain_jail_stat.stat.islnk | default(false))
+      - not domain_jail_stat.stat.exists or account_marker.stat.exists
+    fail_msg: Domain directory already exists without a managed marker; inspect before provisioning.
+# Marker first allows recovery if account creation is interrupted.
+- name: Persist managed identity marker
+  ansible.builtin.copy:
+    content: '{{ {"domain": domain_account.domain, "username": domain_login} | to_nice_json }}'
+    dest: '{{ domain_manifest }}'
+    owner: root
+    group: root
+    mode: '0600'
+- name: Create a root-owned SFTP jail
+  ansible.builtin.file:
+    path: '{{ domain_jail }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+- name: Create private domain primary group
+  ansible.builtin.group:
+    name: '{{ domain_login }}'
+    state: present
+- name: Create domain Linux user with no sudo membership
+  ansible.builtin.user:
+    name: '{{ domain_login }}'
+    comment: 'OlamidePanel domain {{ domain_account.domain }}'
+    group: '{{ domain_login }}'
+    home: '{{ domain_jail }}/home/{{ domain_login }}'
+    create_home: false
+    shell: '{{ "/bin/bash" if domain_access == "shell" else "/usr/sbin/nologin" if domain_access == "disabled" else "/bin/sh" }}'
+    groups: '{{ domain_account_group }}'
+    append: false
+    password_lock: true
+    expires: '{{ 1 if domain_access == "disabled" else -1 }}'
+    state: present
+- name: Create root-owned home parent
+  ansible.builtin.file:
+    path: '{{ domain_jail }}/home'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+- name: Create private writable user home
+  ansible.builtin.file:
+    path: '{{ domain_jail }}/home/{{ domain_login }}'
+    state: directory
+    owner: '{{ domain_login }}'
+    group: '{{ domain_login }}'
+    mode: '0700'
+- name: Replace authorized keys for this domain
+  ansible.builtin.copy:
+    content: |
+      {{ ((domain_account.public_keys | default([])) if domain_access != "disabled" else []) | join('\n') }}
+    dest: '{{ domain_key_base }}/{{ domain_login }}'
+    owner: root
+    group: root
+    mode: '0644'

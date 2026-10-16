@@ -1,0 +1,15 @@
+# Keep real values in your private deployment directory, outside Git.
+domain_accounts_source: inventory  # inventory or panel
+# Used when source=inventory. Exactly one Linux identity is derived per domain.
+domain_accounts:
+  - domain: africandroid.world
+    access: sftp  # sftp (chroot), shell (normal Linux shell), disabled
+    public_keys:
+      - 'ssh-ed25519 REPLACE_WITH_REAL_PUBLIC_KEY owner-device'
+# For source=panel, keys/access come only from this operator-controlled map.
+# Domain names and owner IDs are read from the current panel database.
+# domain_owner_ssh:
+#   '42':
+#     access: sftp
+#     public_keys:
+#       - 'ssh-ed25519 REPLACE_WITH_REAL_PUBLIC_KEY owner-device'

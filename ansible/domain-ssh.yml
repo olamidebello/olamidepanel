@@ -1,0 +1,223 @@
+---
+- name: Manage separate Linux accounts and SSH access per domain
+  hosts: panel_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  vars:
+    domain_accounts_source: inventory
+    domain_accounts: []
+    domain_accounts_allow_empty: false
+    domain_owner_ssh: {}
+    domain_account_group: olamide-domain-ssh
+    domain_home_base: /srv/olamidepanel-domains
+    domain_manifest_base: /etc/olamidepanel/domain-users
+    domain_key_base: /etc/ssh/olamidepanel-domain-keys
+    domain_ssh_config: /etc/ssh/olamidepanel-domain-ssh.conf
+  tasks:
+    - name: Require Debian and an explicit inventory source
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == 'Debian'
+          - domain_accounts_source in ['inventory', 'panel']
+          - domain_accounts_source == 'panel' or domain_accounts | length > 0 or domain_accounts_allow_empty | bool
+          - domain_home_base == '/srv/olamidepanel-domains'
+          - domain_manifest_base == '/etc/olamidepanel/domain-users'
+          - domain_key_base == '/etc/ssh/olamidepanel-domain-keys'
+          - domain_account_group == 'olamide-domain-ssh'
+          - domain_ssh_config == '/etc/ssh/olamidepanel-domain-ssh.conf'
+        fail_msg: Use the fixed managed paths and group; this playbook targets Debian hosts.
+    - name: Install OpenSSH server
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+    - name: Create managed account group
+      ansible.builtin.group:
+        name: '{{ domain_account_group }}'
+        state: present
+    - name: Protect managed parent directories
+      ansible.builtin.file:
+        path: '{{ item.path }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '{{ item.mode }}'
+      loop:
+        - {path: '{{ domain_home_base }}', mode: '0755'}
+        - {path: '{{ domain_manifest_base }}', mode: '0700'}
+        - {path: '{{ domain_key_base }}', mode: '0755'}
+    - name: Use explicit domain inventory
+      ansible.builtin.set_fact:
+        managed_domain_accounts: '{{ domain_accounts }}'
+      when: domain_accounts_source == 'inventory'
+    - name: Read domain inventory without database credentials in output
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/export_domain_accounts.py]
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      register: panel_domain_inventory
+      changed_when: false
+      check_mode: false
+      when: domain_accounts_source == 'panel'
+    - name: Start discovered domain list
+      ansible.builtin.set_fact:
+        managed_domain_accounts: []
+      when: domain_accounts_source == 'panel'
+    - name: Attach operator-authorized owner keys to discovered domains
+      ansible.builtin.set_fact:
+        managed_domain_accounts: >-
+          {{ managed_domain_accounts + [{'domain': item.domain,
+          'access': domain_owner_ssh.get(item.owner_id | string, {}).get('access', 'disabled') if item.active else 'disabled',
+          'public_keys': domain_owner_ssh.get(item.owner_id | string, {}).get('public_keys', [])}] }}
+      loop: '{{ (panel_domain_inventory.stdout | default("[]")) | from_json }}'
+      when: domain_accounts_source == 'panel'
+    - name: Find previously managed domain identities
+      ansible.builtin.find:
+        paths: '{{ domain_manifest_base }}'
+        patterns: '*.json'
+        file_type: file
+      register: retained_domain_markers
+    - name: Read previous domain identity markers
+      ansible.builtin.slurp:
+        src: '{{ item.path }}'
+      loop: '{{ retained_domain_markers.files }}'
+      register: retained_domain_identities
+    - name: Suspend domains removed from the authoritative inventory
+      ansible.builtin.set_fact:
+        managed_domain_accounts: "{{ managed_domain_accounts + [{'domain': (item.content | b64decode | from_json).domain, 'access': 'disabled', 'public_keys': []}] }}"
+      loop: '{{ retained_domain_identities.results }}'
+      when: (item.content | b64decode | from_json).domain not in managed_domain_accounts | map(attribute='domain') | list
+    - name: Validate inventory structure and unique domain names
+      ansible.builtin.assert:
+        that:
+          - managed_domain_accounts is sequence
+          - managed_domain_accounts is not string
+          - managed_domain_accounts | map(attribute='domain') | list | unique | length == managed_domain_accounts | length
+    - name: Validate every entry before changing any account
+      ansible.builtin.assert:
+        that:
+          - item.domain is string
+          - item.domain | length <= 253
+          - item.domain is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          - item.access | default('sftp') in ['sftp', 'shell', 'disabled']
+          - item.public_keys | default([]) is sequence
+          - item.public_keys | default([]) is not string
+          - item.access | default('sftp') == 'disabled' or item.public_keys | default([]) | length > 0
+        fail_msg: Each enabled domain requires a valid lowercase DNS name, access mode and public keys.
+      loop: '{{ managed_domain_accounts }}'
+    - name: Validate every public key with ssh-keygen
+      ansible.builtin.command:
+        argv: [ssh-keygen, -l, -f, /dev/stdin]
+        stdin: '{{ item.1 }}'
+      changed_when: false
+      check_mode: false
+      loop: '{{ managed_domain_accounts | subelements("public_keys", skip_missing=True) }}'
+      when: item.0.access | default('sftp') != 'disabled'
+    - name: Create or update domain accounts
+      ansible.builtin.include_tasks: tasks/domain-account.yml
+      loop: '{{ managed_domain_accounts }}'
+      loop_control:
+        loop_var: domain_account
+        label: '{{ domain_account.domain }}'
+    - name: Inspect existing managed SSH configuration
+      ansible.builtin.stat:
+        path: '{{ domain_ssh_config }}'
+      register: old_domain_ssh_stat
+    - name: Reject a symbolic link for managed SSH configuration
+      ansible.builtin.assert:
+        that: not (old_domain_ssh_stat.stat.islnk | default(false))
+    - name: Read previous managed SSH configuration for rollback
+      ansible.builtin.slurp:
+        src: '{{ domain_ssh_config }}'
+      register: old_domain_ssh
+      when: old_domain_ssh_stat.stat.exists
+    - name: Read primary SSH configuration for rollback
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config
+      register: old_primary_ssh
+    - name: Install and validate per-domain SSH rules
+      block:
+        - name: Render isolated SFTP and optional shell rules
+          ansible.builtin.template:
+            src: templates/domain-ssh.conf.j2
+            dest: '{{ domain_ssh_config }}'
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Reload domain SSH
+        # EOF keeps Match blocks after global directives, unlike a top-of-file drop-in.
+        - name: Include domain rules at end of primary SSH configuration
+          ansible.builtin.lineinfile:
+            path: /etc/ssh/sshd_config
+            line: 'Include {{ domain_ssh_config }}'
+            insertafter: EOF
+            validate: /usr/sbin/sshd -t -f %s
+          notify: Reload domain SSH
+        - name: Validate complete SSH configuration before reload
+          ansible.builtin.command: /usr/sbin/sshd -t
+          changed_when: false
+        - name: Inspect effective authentication and confinement rules
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/sshd
+              - -T
+              - -C
+              - 'user=dom_{{ (item.domain | hash("sha256"))[:16] }},host=localhost,addr=127.0.0.1'
+          changed_when: false
+          loop: '{{ managed_domain_accounts }}'
+          register: domain_effective_ssh
+        - name: Reject earlier SSH rules that override managed key-only access
+          ansible.builtin.assert:
+            that:
+              - "'authenticationmethods publickey' in item.stdout_lines"
+              - "'passwordauthentication no' in item.stdout_lines"
+              - "'kbdinteractiveauthentication no' in item.stdout_lines"
+              - "'disableforwarding yes' in item.stdout_lines"
+              - "('authorizedkeysfile ' + domain_key_base + '/%u') in item.stdout_lines"
+              - "item.item.access | default('sftp') == 'shell' or ('chrootdirectory ' + domain_home_base + '/%u') in item.stdout_lines"
+              - "item.item.access | default('sftp') != 'shell' or 'forcecommand none' in item.stdout_lines"
+              - "item.item.access | default('sftp') != 'sftp' or ('forcecommand internal-sftp -d /home/dom_' + (item.item.domain | hash('sha256'))[:16]) in item.stdout_lines"
+            fail_msg: Earlier SSH Match rules conflict with managed domain access; no reload was performed.
+          loop: '{{ domain_effective_ssh.results }}'
+          when: not ansible_check_mode
+      rescue:
+        - name: Restore primary SSH configuration
+          ansible.builtin.copy:
+            content: '{{ old_primary_ssh.content | b64decode }}'
+            dest: /etc/ssh/sshd_config
+            owner: root
+            group: root
+            mode: '0600'
+        - name: Restore previous domain rules
+          ansible.builtin.copy:
+            content: '{{ old_domain_ssh.content | b64decode }}'
+            dest: '{{ domain_ssh_config }}'
+            owner: root
+            group: root
+            mode: '0644'
+          when: old_domain_ssh_stat.stat.exists
+        - name: Remove new rules if there were none before
+          ansible.builtin.file:
+            path: '{{ domain_ssh_config }}'
+            state: absent
+          when: not old_domain_ssh_stat.stat.exists
+        - name: Stop without reloading invalid configuration
+          ansible.builtin.fail:
+            msg: SSH validation failed. Previous managed rules restored; inspect sshd configuration.
+    - name: Start SSH service
+      ansible.builtin.systemd:
+        name: ssh
+        enabled: true
+        state: started
+    - name: Apply validated SSH settings
+      ansible.builtin.meta: flush_handlers
+    - name: Show domain login names
+      ansible.builtin.debug:
+        msg: '{{ item.domain }} → dom_{{ (item.domain | hash("sha256"))[:16] }} ({{ item.access | default("sftp") }})'
+      loop: '{{ managed_domain_accounts }}'
+  handlers:
+    - name: Reload domain SSH
+      ansible.builtin.systemd:
+        name: ssh
+        state: reloaded

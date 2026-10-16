@@ -155,3 +155,5 @@ Reseller storefronts are supported through super-admin publishing approval, sell
 ## Static domain publishing
 
 [Static websites guide](docs/STATIC_WEBSITES.md) describes the DNS-verified title/tagline publisher and separate Nginx/Certbot worker. Install it with `ansible/enable-static-websites.yml`. Domain inventory alone still does not publish a site; ownership TXT proof and a publishing request are required. Authoritative DNS, application hosting, website file uploads and a full builder remain unfinished.
+
+[Per-domain Linux users and SSH automation](docs/DOMAIN_SSH.md): separate domain identities, key rotation, SFTP confinement, optional shell access, suspension and an opt-in reconciliation timer.
