@@ -6,26 +6,30 @@
   vars:
     panel_mysql_key_url: https://repo.mysql.com/RPM-GPG-KEY-mysql-2025
   pre_tasks:
-    - name: Validate platform and required deployment values
+    - name: Check platform
       ansible.builtin.assert:
         that:
           - ansible_distribution == 'Debian'
           - ansible_distribution_major_version == '12'
           - ansible_architecture == 'x86_64'
-          - panel_hostname is defined
-          - panel_hostname is match('^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$')
-          - panel_acme_email is defined
-          - panel_acme_email is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
-          - panel_mysql_root_password is defined
-          - panel_mysql_root_password | length >= 20
-          - panel_mysql_password is defined
-          - panel_mysql_password | length >= 20
-          - panel_admin_username is defined
-          - panel_admin_username is match('^[a-z][a-z0-9_]{2,31}$')
-          - panel_admin_password is defined
-          - panel_admin_password | length >= 14
-        fail_msg: Provide valid hostname, ACME email and encrypted database/admin credentials on Debian 12 amd64.
+        fail_msg: This installer requires Debian 12 amd64.
+    - name: Evaluate settings without exposing their values
+      ansible.builtin.set_fact:
+        panel_validation_checks:
+          hostname: "{{ (panel_hostname | default('') | string) is match('^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$') }}"
+          acme_email: "{{ ((panel_acme_email | default('') | string) is match('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$')) and (panel_acme_email | default('') not in ['operator@example.com', 'YOUR_EMAIL_ADDRESS']) }}"
+          mysql_root_password: "{{ (panel_mysql_root_password | default('') | string | length >= 20) and not ((panel_mysql_root_password | default('') | string) is search('REPLACE_WITH|YOUR_')) }}"
+          mysql_application_password: "{{ (panel_mysql_password | default('') | string | length >= 20) and not ((panel_mysql_password | default('') | string) is search('REPLACE_WITH|YOUR_')) }}"
+          admin_username: "{{ (panel_admin_username | default('') | string) is match('^[a-z][a-z0-9_]{2,31}$') }}"
+          admin_password: "{{ (panel_admin_password | default('') | string | length >= 14) and not ((panel_admin_password | default('') | string) is search('REPLACE_WITH|YOUR_')) }}"
       no_log: true
+    - name: Report invalid setting names only
+      ansible.builtin.assert:
+        that: item.value | bool
+        fail_msg: 'Invalid or missing setting: {{ item.key }}. Correct it using ansible-vault edit. Passwords are never printed.'
+      loop: '{{ panel_validation_checks | dict2items }}'
+      loop_control:
+        label: '{{ item.key }}'
     - name: Inspect existing MySQL data
       ansible.builtin.stat:
         path: /var/lib/mysql/mysql
