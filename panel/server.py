@@ -13,6 +13,7 @@ import storage
 import mfa
 import dns_tools
 import site_controls
+import hosted_domains
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -105,6 +106,9 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == '/api/metrics':
                     usage = shutil.disk_usage(DATA)
                     return self.reply(200, {'disk_total':usage.total,'disk_used':usage.used,'load':os.getloadavg(), 'hostname':os.uname().nodename})
+                if self.path == '/api/hosting-domains':
+                    if not allowed(u, 'users.manage'): return self.reply(403, {'error':'Super-admin access required'})
+                    return self.reply(200, hosted_domains.report(u, db))
                 if self.path == '/api/domains':
                     with db() as con: rows = con.execute('SELECT id,name,created FROM domains WHERE owner=?',(u['id'],)).fetchall()
                     return self.reply(200, [dict(x) for x in rows])
@@ -315,3 +319,4 @@ if __name__=='__main__':
         create_user(args.create_admin,getpass.getpass('New admin password: '),'root')
     else:
         server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler); server.attempts={}; server.serve_forever()
+
