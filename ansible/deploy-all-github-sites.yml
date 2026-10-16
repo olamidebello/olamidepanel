@@ -1,0 +1,455 @@
+# Single-file GitHub deployment for 181.214.149.146 (Debian/Ubuntu).
+# Run ON THE HOST as root after installing ansible-core:
+# ansible-playbook -i localhost, -c local deploy-all-github-sites.yml
+# Remote: ansible-playbook -i 181.214.149.146, -u root deploy-all-github-sites.yml
+# Requires working outbound GitHub/APT/ACME access and inbound TCP 80/443.
+# DNS: apex A=181.214.149.146; www CNAME=apex; no AAAA for IPv4-only hosting.
+# Default: check main hourly and automatically deploy new commits from these repos.
+# Disable schedule: -e deployment_auto_update=false
+# Generated initial admin credentials (root only):
+#   /var/lib/olamide-github-deploy/credentials/{africanappsstore,dobhrap}.json
+# Existing administrators are preserved, not reset by generated credentials.
+# Status: /var/lib/olamide-github-deploy/status.json
+# Logs: journalctl -u olamide-github-deploy.service
+# Backups: /var/lib/olamide-github-deploy/backups (no automatic deletion).
+# Retry now: systemctl start olamide-github-deploy.service
+# This supersedes the old six-domain static-hosting TIMER to prevent proxy rewrites.
+# Existing unrelated Nginx sites are never removed; conflicting vhosts are reported.
+# Panel updates require its existing service, virtualenv and MySQL configuration.
+# Panel data/MySQL are backed up before updating; schema rollback needs operator review.
+# AfricanBrowser publishes a source-project page, not an unbuilt Chromium binary.
+# Personal domain is skipped until explicitly mapped: -e personal_site_repo=olamidebello/NAME
+# Its prebuilt static files must be in public/index.html; other stacks need an adapter.
+# To add its repo, edit deployment_sites below; add an adapter for its actual stack.
+# No fabricated full-platform implementation or DNS-provider access is included.
+# Check mode is not supported: use --syntax-check for a non-mutating validation.
+---
+- name: Pull and deploy all available operator GitHub projects
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    deployment_ipv4: 181.214.149.146
+    deployment_email: dobcalldemo@gmail.com
+    deployment_auto_update: true
+    personal_site_repo: ''
+    deployment_sites:
+    - domain: africanappsstore.space
+      repo: olamidebello/africanappsstore
+      kind: store
+      service: africanappsstore
+      user: africanstore
+      port: 18081
+      health: /api/health
+      adopt_service: true
+    - domain: africanbrowser.com
+      repo: olamidebello/AfricanBrowser
+      kind: browser
+    - domain: dobhrap.com
+      repo: olamidebello/DOBHRAP
+      kind: dobhrap
+      service: dobhrap
+      user: dobhrap
+      port: 18082
+      health: /health
+      adopt_service: true
+    - domain: nekkeddating.com
+      repo: olamidebello/Nekked-Dating
+      kind: dating
+      service: nekkeddating
+      user: nekkeddating
+      port: 18083
+      health: /
+    - domain: olamideolatayobello.com
+      repo: '{{ personal_site_repo }}'
+      kind: static
+      public_dir: public
+    - domain: olamidepanel.com
+      repo: olamidebello/olamidepanel
+      kind: panel
+      port: 8090
+  pre_tasks:
+  - name: Reject unsupported check mode
+    ansible.builtin.fail:
+      msg: Use --syntax-check; live git, backup and certificate steps cannot be simulated.
+    when: ansible_check_mode
+  tasks:
+  - name: Require supported OS and valid operator email
+    ansible.builtin.assert:
+      that:
+      - ansible_facts.os_family == 'Debian'
+      - deployment_email is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$')
+      fail_msg: Use Debian/Ubuntu and set deployment_email.
+  - name: Validate explicit domain and repository mapping
+    ansible.builtin.assert:
+      that:
+      - item.domain is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?[.])+[a-z]{2,63}$')
+      - item.repo == '' or item.repo is match('^olamidebello/[A-Za-z0-9_.-]+$')
+      - item.kind in ['store', 'dobhrap', 'dating', 'panel', 'browser', 'static']
+      fail_msg: Set a supported deployment kind when adding an application; arbitrary build commands are not guessed.
+    loop: '{{ deployment_sites }}'
+  - name: Install deployment and HTTPS prerequisites
+    ansible.builtin.apt:
+      name:
+      - git
+      - python3
+      - python3-venv
+      - python3-pip
+      - python3-dnspython
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+      - ca-certificates
+      state: present
+      update_cache: true
+      cache_valid_time: 3600
+  - name: Validate current Nginx configuration
+    ansible.builtin.command: nginx -t
+    changed_when: false
+  - name: Create root-owned deployment directories
+    ansible.builtin.file:
+      path: '{{ item.path }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '{{ item.mode }}'
+    loop:
+    - path: /var/lib/olamide-github-deploy
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/sources
+      mode: '0700'
+    - path: /var/lib/olamide-github-deploy/backups
+      mode: '0700'
+    - path: /var/lib/olamide-github-deploy/credentials
+      mode: '0700'
+    - path: /var/lib/olamide-github-deploy/status
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/releases
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/public
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/public/africanbrowser.com
+      mode: '0755'
+    - path: /var/lib/olamide-six-domains/acme
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/releases/africanappsstore
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/releases/dobhrap
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/releases/nekkeddating
+      mode: '0755'
+    - path: /var/lib/olamide-github-deploy/releases/olamidepanel
+      mode: '0755'
+  - name: Save operator deployment configuration
+    ansible.builtin.copy:
+      dest: /etc/olamide-github-deploy.json
+      owner: root
+      group: root
+      mode: '0600'
+      content: '{{ {"server_ipv4": deployment_ipv4, "admin_email": deployment_email, "sites": deployment_sites}
+        | to_nice_json }}'
+  - name: Install embedded deployment worker
+    ansible.builtin.copy:
+      dest: /usr/local/sbin/olamide-github-deploy
+      owner: root
+      group: root
+      mode: '0700'
+      content: "#!/usr/bin/python3\n\"\"\"Operator-owned domain deployment. Installed by deploy-all-github-sites.yml.\"\
+        \"\"\nimport fcntl\nimport grp\nimport html\nimport json\nimport os\nfrom pathlib import Path\nimport pwd\n\
+        import re\nimport secrets\nimport shutil\nimport socket\nimport sqlite3\nimport subprocess\nimport tarfile\n\
+        import tempfile\nimport time\nimport urllib.request\n\nBASE = Path('/var/lib/olamide-github-deploy')\nMARK\
+        \ = '# Managed by olamide-github-deploy v1\\n'\nCFG = {}\n\ndef run(args, cwd=None, env=None, timeout=300):\n\
+        \    if args[0] == 'git':\n        env = dict(os.environ if env is None else env, GIT_TERMINAL_PROMPT='0')\n\
+        \    return subprocess.run(args, cwd=cwd, env=env, check=True, capture_output=True,\n                  \
+        \        text=True, timeout=timeout).stdout.strip()\n\ndef write(path, text, mode=0o600):\n    path = Path(path)\n\
+        \    path.parent.mkdir(parents=True, exist_ok=True)\n    tmp = path.with_name(path.name + '.tmp')\n    tmp.write_text(text)\n\
+        \    tmp.chmod(mode)\n    tmp.replace(path)\n\ndef account(name, data):\n    try:\n        user = pwd.getpwnam(name)\n\
+        \    except KeyError:\n        run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin',\
+        \ name])\n        user = pwd.getpwnam(name)\n    data.mkdir(parents=True, exist_ok=True, mode=0o700)\n \
+        \   os.chown(data, user.pw_uid, user.pw_gid)\n    data.chmod(0o700)\n    return user\n\ndef checkout(site):\n\
+        \    repo = site.get('repo')\n    if not repo:\n        return None\n    if not re.fullmatch(r'olamidebello/[A-Za-z0-9_.-]+',\
+        \ repo):\n        raise ValueError('Repository must be an olamidebello/name identifier')\n    url = 'https://github.com/'\
+        \ + repo + '.git'\n    branch = site.get('branch', 'main')\n    try:\n        refs = run(['git', 'ls-remote',\
+        \ '--heads', url, 'refs/heads/' + branch], timeout=90)\n    except subprocess.CalledProcessError:\n    \
+        \    # Missing/private/inaccessible source remains untouched and is retried later.\n        return None\n\
+        \    if not refs:\n        return None\n    sha = refs.split()[0]\n    root = BASE / 'sources' / site['domain']\n\
+        \    if not root.exists():\n        run(['git', 'clone', '--no-checkout', url, str(root)], timeout=600)\n\
+        \    if run(['git', 'remote', 'get-url', 'origin'], cwd=root) != url:\n        raise RuntimeError('Unexpected\
+        \ Git origin; refusing to change checkout')\n    if run(['git', 'status', '--porcelain'], cwd=root):\n \
+        \       raise RuntimeError('Source checkout has local changes; refusing to overwrite')\n    run(['git',\
+        \ 'fetch', 'origin', 'refs/heads/' + branch], cwd=root, timeout=600)\n    sha = run(['git', 'rev-parse',\
+        \ 'FETCH_HEAD'], cwd=root)\n    run(['git', 'checkout', '--detach', sha], cwd=root)\n    return root, sha\n\
+        \ndef export(root, sha, dest):\n    dest.mkdir(parents=True, exist_ok=True, mode=0o755)\n    with tempfile.TemporaryFile()\
+        \ as archive:\n        subprocess.run(['git', 'archive', sha], cwd=root, stdout=archive, check=True)\n \
+        \       archive.seek(0)\n        with tarfile.open(fileobj=archive) as tf:\n            # Repositories are\
+        \ executable trusted source, but links must not escape releases.\n            for member in tf.getmembers():\n\
+        \                if member.issym() or member.islnk() or member.name.startswith('/') or '..' in Path(member.name).parts:\n\
+        \                    raise RuntimeError('Unsafe archive member')\n            tf.extractall(dest)\n    for\
+        \ path in [dest, *dest.rglob('*')]:\n        path.chmod(0o755 if path.is_dir() or path.stat().st_mode &\
+        \ 0o111 else 0o644)\n\ndef switch(link, target):\n    link = Path(link)\n    if link.exists() and not link.is_symlink():\n\
+        \        raise RuntimeError('Refusing to replace non-symlink deployment path: ' + str(link))\n    tmp =\
+        \ link.with_name(link.name + '.next')\n    tmp.unlink(missing_ok=True)\n    tmp.symlink_to(target)\n   \
+        \ tmp.replace(link)\n\ndef health(port, route='/'):\n    for attempt in range(15):\n        try:\n     \
+        \       with urllib.request.urlopen('http://127.0.0.1:' + str(port) + route, timeout=3) as response:\n \
+        \               if response.status == 200:\n                    return\n        except Exception:\n    \
+        \        pass\n        time.sleep(1)\n    raise RuntimeError('Backend readiness failed on port ' + str(port))\n\
+        \ndef service_exists(name):\n    return run(['systemctl', 'show', name, '--property=LoadState', '--value'])\
+        \ != 'not-found'\n\ndef backup_sqlite(data, backup):\n    if not data.exists():\n        return\n    backup.mkdir(parents=True,\
+        \ exist_ok=True, mode=0o700)\n    for p in data.rglob('*'):\n        if p.is_symlink():\n            raise\
+        \ RuntimeError('Symlink in persistent data requires operator review')\n        if p.is_file() and p.suffix\
+        \ not in ('.db', '.sqlite3', '.sqlite') and not p.name.endswith(('-wal', '-shm', '-journal')):\n       \
+        \     target = backup / p.relative_to(data)\n            target.parent.mkdir(parents=True, exist_ok=True)\n\
+        \            shutil.copy2(p, target)\n    for p in data.rglob('*'):\n        if p.is_file() and p.suffix\
+        \ in ('.db', '.sqlite3', '.sqlite'):\n            target = backup / p.relative_to(data)\n            target.parent.mkdir(parents=True,\
+        \ exist_ok=True)\n            with sqlite3.connect(str(p)) as source, sqlite3.connect(str(target)) as output:\n\
+        \                source.backup(output)\n\ndef app(site, root, sha):\n    kind, name, port = site['kind'],\
+        \ site['service'], site['port']\n    user_name = site['user']\n    data = Path('/var/lib') / name\n    user\
+        \ = account(user_name, data)\n    release = BASE / 'releases' / name / sha\n    if not release.exists():\n\
+        \        export(root, sha, release)\n    entry = 'server.py' if kind == 'dating' else 'app.py'\n    if not\
+        \ (release / entry).is_file():\n        raise RuntimeError('Expected application entry point missing')\n\
+        \    run(['/usr/bin/python3', '-m', 'compileall', '-q', str(release)])\n    base_env = {'PYTHONDONTWRITEBYTECODE':\
+        \ '1', 'PORT': str(port)}\n    if kind == 'store':\n        base_env.update(STORE_DATA=str(data), COOKIE_SECURE='1',\
+        \ BIND='127.0.0.1')\n    elif kind == 'dobhrap':\n        base_env.update(DOBHRAP_DB=str(data / 'dobhrap.db'),\
+        \ DOBHRAP_SECURE_COOKIE='1')\n    else:\n        base_env.update(NEKKED_DB=str(data / 'nekked.sqlite3'),\
+        \ NEKKED_HOST='127.0.0.1',\n                        NEKKED_SECURE_COOKIE='1', NEKKED_ORIGIN='https://' +\
+        \ site['domain'])\n    link = Path('/opt') / (name + '-github-current')\n    old = link.resolve() if link.is_symlink()\
+        \ else None\n    unit = Path('/etc/systemd/system') / (name + '.service')\n    old_unit = unit.read_text()\
+        \ if unit.exists() else None\n    if old_unit and not (old_unit.startswith(MARK) or site.get('adopt_service')):\n\
+        \        raise RuntimeError('Existing service not managed by this playbook')\n    # Do not take a port used\
+        \ by another application.\n    if not service_exists(name):\n        with socket.socket() as sock:\n   \
+        \         sock.bind(('127.0.0.1', port))\n    stamp = str(time.time_ns())\n    backup = BASE / 'backups'\
+        \ / site['domain'] / stamp\n    backup.mkdir(parents=True, mode=0o700)\n    if old_unit:\n        write(backup\
+        \ / 'service.unit', old_unit)\n    if service_exists(name):\n        run(['systemctl', 'stop', name])\n\
+        \    try:\n        backup_sqlite(data, backup / 'data')\n        if kind in ('store', 'dobhrap'):\n    \
+        \        credentials = BASE / 'credentials' / (name + '.json')\n            if credentials.exists():\n \
+        \               initial = json.loads(credentials.read_text())\n            else:\n                initial\
+        \ = {'email': CFG['admin_email'], 'password': secrets.token_urlsafe(30)}\n                write(credentials,\
+        \ json.dumps(initial, indent=2) + '\\n')\n            env = dict(os.environ, **base_env)\n            prefix\
+        \ = 'ADMIN_' if kind == 'store' else 'DOBHRAP_ADMIN_'\n            env[prefix + 'EMAIL'] = initial['email']\n\
+        \            env[prefix + 'PASSWORD'] = initial['password']\n            # Password stays out of command\
+        \ arguments, logs and service unit.\n            subprocess.run(['/usr/sbin/runuser', '-u', user_name, '--',\
+        \ '/usr/bin/python3', '-c',\n                            'import app; app.init()'], cwd=release, env=env,\
+        \ check=True,\n                           capture_output=True, timeout=60)\n        switch(link, release)\n\
+        \        env_lines = '\\n'.join('Environment=' + k + '=' + json.dumps(v) for k, v in base_env.items()\n\
+        \                              if True)\n        write(unit, MARK + f'''[Unit]\nDescription=GitHub deployment\
+        \ for {site['domain']}\nAfter=network.target\n[Service]\nUser={user_name}\nGroup={grp.getgrgid(user.pw_gid).gr_name}\n\
+        WorkingDirectory={link}\n{env_lines}\nExecStart=/usr/bin/python3 {link}/{entry}\nRestart=on-failure\nRestartSec=3\n\
+        NoNewPrivileges=true\nPrivateTmp=true\nProtectHome=true\nProtectSystem=strict\nReadWritePaths={data}\nUMask=0077\n\
+        [Install]\nWantedBy=multi-user.target\n''', 0o644)\n        run(['systemctl', 'daemon-reload'])\n      \
+        \  run(['systemctl', 'enable', '--now', name])\n        health(port, site.get('health', '/'))\n    except\
+        \ Exception:\n        run(['systemctl', 'stop', name])\n        if old:\n            switch(link, old)\n\
+        \        if old_unit:\n            write(unit, old_unit, 0o644)\n            run(['systemctl', 'daemon-reload'])\n\
+        \            run(['systemctl', 'start', name])\n        # Data backup is retained; schema rollback is deliberately\
+        \ not guessed.\n        raise\n    return f'proxy_pass http://127.0.0.1:{port};\\nproxy_set_header Host\
+        \ $host;\\nproxy_set_header X-Forwarded-Proto $scheme;'\n\ndef panel(site, root, sha):\n    current = Path('/opt/olamidepanel')\n\
+        \    python = current / 'venv/bin/python'\n    if not python.exists() or not Path('/etc/olamidepanel/database.json').exists():\n\
+        \        raise RuntimeError('Panel needs its initial MySQL/configuration installation before this updater\
+        \ can run')\n    if not service_exists('olamidepanel'):\n        raise RuntimeError('Existing olamidepanel\
+        \ systemd service required')\n    backup = BASE / 'backups' / site['domain'] / str(time.time_ns())\n   \
+        \ backup.mkdir(parents=True, mode=0o700)\n    run(['systemctl', 'stop', 'olamidepanel'])\n    old = current\
+        \ / 'panel'\n    try:\n        shutil.copytree(old, backup / 'panel')\n        shutil.copy2('/etc/olamidepanel/database.json',\
+        \ backup / 'database.json')\n        if Path('/var/lib/olamidepanel').exists():\n            shutil.copytree('/var/lib/olamidepanel',\
+        \ backup / 'data', symlinks=True)\n        # Transaction-consistent logical MySQL backup through the existing\
+        \ adapter.\n        dump = '''import sys\nsys.path.insert(0, '/opt/olamidepanel/panel')\nimport database,\
+        \ pymysql\nc=pymysql.connect(**database.configuration())\nwith c.cursor() as q:\n q.execute('SET TRANSACTION\
+        \ ISOLATION LEVEL REPEATABLE READ')\n q.execute('START TRANSACTION WITH CONSISTENT SNAPSHOT')\n q.execute('SHOW\
+        \ TABLES'); tables=[next(iter(row.values())) for row in q.fetchall()]\n print('SET FOREIGN_KEY_CHECKS=0;')\n\
+        \ for name in tables:\n  ident='`'+name.replace('`','``')+'`'\n  q.execute('SHOW CREATE TABLE '+ident);\
+        \ row=q.fetchone()\n  print('DROP TABLE IF EXISTS '+ident+';'); print(row['Create Table']+';')\n  q.execute('SELECT\
+        \ * FROM '+ident)\n  for row in q.fetchall():\n   cols=','.join('`'+k.replace('`','``')+'`' for k in row)\n\
+        \   print('INSERT INTO '+ident+' ('+cols+') VALUES ('+','.join(c.escape(v) for v in row.values())+');')\n\
+        \ print('SET FOREIGN_KEY_CHECKS=1;')\nc.rollback(); c.close()\n'''\n        with (backup / 'database.sql').open('w')\
+        \ as out:\n            subprocess.run([str(python), '-c', dump], stdout=out, stderr=subprocess.PIPE, check=True,\
+        \ timeout=600)\n        stage = BASE / 'releases' / 'olamidepanel' / sha\n        if not stage.exists():\n\
+        \            export(root, sha, stage)\n        run([str(python), '-m', 'pip', 'install', '-r', str(stage\
+        \ / 'requirements.txt')], timeout=600)\n        run([str(python), '-m', 'compileall', '-q', str(stage /\
+        \ 'panel')])\n        shutil.copytree(stage / 'panel', old, dirs_exist_ok=True)\n        run(['systemctl',\
+        \ 'start', 'olamidepanel'])\n        health(site['port'])\n    except Exception:\n        if (backup / 'panel').exists():\n\
+        \            shutil.copytree(backup / 'panel', old, dirs_exist_ok=True)\n        run(['systemctl', 'start',\
+        \ 'olamidepanel'])\n        raise\n    return f\"proxy_pass http://127.0.0.1:{site['port']};\\nproxy_set_header\
+        \ Host $host;\\nproxy_set_header X-Forwarded-Proto $scheme;\"\n\ndef browser(site, root, sha):\n    # Host\
+        \ a truthful source-project page; do not compile Chromium on a shared VPS.\n    dest = BASE / 'public' /\
+        \ site['domain'] / sha\n    dest.mkdir(parents=True, exist_ok=True)\n    logo = root / 'assets/branding/africanbrowser-logo.png'\n\
+        \    if logo.is_file():\n        shutil.copy2(logo, dest / 'logo.png')\n    write(dest / 'index.html', '''<!doctype\
+        \ html><html lang=\"en\"><meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"\
+        ><title>AfricanBrowser</title>\n<style>body{font:18px system-ui;max-width:850px;margin:8vh auto;padding:24px;background:#10251d;color:#fff}img{max-width:100%;max-height:260px}a{color:#f3cf65}</style>\n\
+        <img src=\"/logo.png\" alt=\"AfricanBrowser\"><h1>AfricanBrowser</h1><p>\u2026 browse the black ways.</p>\n\
+        <p>Browser source and build tools for Android and desktop. Compiled downloads are not published here yet.</p>\n\
+        <p><a href=\"https://github.com/olamidebello/AfricanBrowser\">View source and build instructions</a></p>\n\
+        <p>Copyright \xA9 2026 Olamide Olatayo Bello.</p></html>''', 0o644)\n    dest.chmod(0o755)\n    return 'root\
+        \ ' + str(dest) + ';\\nindex index.html;\\ntry_files $uri $uri/ =404;'\n\ndef static_site(site, root, sha):\n\
+        \    # An explicitly mapped prebuilt static website, never the repository root.\n    relative = site.get('public_dir',\
+        \ 'public')\n    if Path(relative).is_absolute() or '..' in Path(relative).parts or relative in ('', '.'):\n\
+        \        raise RuntimeError('Set public_dir to a dedicated prebuilt public directory')\n    source = (root\
+        \ / relative).resolve()\n    if not source.is_relative_to(root.resolve()) or not (source / 'index.html').is_file():\n\
+        \        raise RuntimeError('Static repository needs public_dir/index.html; no build stack is guessed')\n\
+        \    dest = BASE / 'public' / site['domain'] / sha\n    if not dest.exists():\n        dest.parent.mkdir(parents=True,\
+        \ exist_ok=True, mode=0o755)\n        for path in source.rglob('*'):\n            if path.is_symlink() or\
+        \ path.name.startswith('.') or path.suffix in ('.py', '.php', '.sql', '.env'):\n                raise RuntimeError('Static\
+        \ public directory contains private or executable server files')\n        shutil.copytree(source, dest)\n\
+        \        for path in [dest, *dest.rglob('*')]:\n            path.chmod(0o755 if path.is_dir() else 0o644)\n\
+        \    return 'root ' + str(dest) + ';\\nindex index.html;\\ntry_files $uri $uri/ =404;'\n\ndef conflicts(domain,\
+        \ target):\n    dump = run(['nginx', '-T'])\n    chunks = re.split(r'^# configuration file (.+):\\s*$',\
+        \ dump, flags=re.M)\n    for i in range(1, len(chunks), 2):\n        path, text = Path(chunks[i].strip()),\
+        \ chunks[i+1]\n        if path.resolve() == target.resolve():\n            continue\n        text = re.sub(r'#[^\\\
+        n]*', '', text)\n        names = [x for value in re.findall(r'\\bserver_name\\s+([^;]+);', text) for x in\
+        \ value.split()]\n        for name in names:\n            for host in (domain, 'www.' + domain):\n     \
+        \           match = (name.strip('\\\"\\'').lower() == host or name.startswith('~') or\n                \
+        \         name.startswith('*.') and host.endswith(name[1:]) or\n                         name.startswith('.')\
+        \ and (host == name[1:] or host.endswith(name)) or\n                         name.endswith('.*') and host.startswith(name[:-1]))\n\
+        \                if match:\n                    raise RuntimeError('Conflicting existing Nginx host in '\
+        \ + str(path))\n\ndef dns_ready(host):\n    import dns.resolver\n    for ns in ('1.1.1.1', '8.8.8.8'):\n\
+        \        resolver = dns.resolver.Resolver(configure=False)\n        resolver.nameservers = [ns]\n      \
+        \  resolver.lifetime = 5\n        try:\n            if {str(a) for a in resolver.resolve(host, 'A')} !=\
+        \ {CFG['server_ipv4']}:\n                return False\n            try:\n                if list(resolver.resolve(host,\
+        \ 'AAAA')):\n                    return False\n            except dns.resolver.NoAnswer:\n             \
+        \   pass\n        except dns.exception.DNSException:\n            return False\n    return True\n\ndef vhost(site,\
+        \ location):\n    domain = site['domain']\n    target = Path('/etc/nginx/sites-available') / ('olamide-auto-'\
+        \ + domain)\n    conflicts(domain, target)\n    previous = target.read_text() if target.exists() else None\n\
+        \    if previous and not (previous.startswith(MARK) or previous.startswith('# Managed by olamide-six-domains\
+        \ v1\\n')):\n        raise RuntimeError('Unmanaged vhost; replacement refused')\n    cert = Path('/etc/letsencrypt/live')\
+        \ / domain\n    tls = (cert / 'fullchain.pem').exists() and (cert / 'privkey.pem').exists()\n    hosts =\
+        \ [domain]\n    www_ready = dns_ready('www.' + domain)\n    if www_ready:\n        hosts.append('www.' +\
+        \ domain)\n    acme = 'location ^~ /.well-known/acme-challenge/ { root /var/lib/olamide-six-domains/acme;\
+        \ }\\n'\n    content = MARK + 'server { listen 80; server_name ' + ' '.join(hosts) + ';\\n' + acme\n   \
+        \ if tls:\n        content += 'location / { return 301 https://' + domain + '$request_uri; }\\n}\\n'\n \
+        \       content += 'server { listen 443 ssl; server_name ' + ' '.join(hosts) + ';\\n'\n        content +=\
+        \ 'ssl_certificate ' + str(cert / 'fullchain.pem') + ';\\nssl_certificate_key ' + str(cert / 'privkey.pem')\
+        \ + ';\\n'\n    content += 'client_max_body_size 25m;\\nlocation / {\\n' + location + '\\n}\\n}\\n'\n  \
+        \  link = Path('/etc/nginx/sites-enabled') / target.name\n    if link.exists() or link.is_symlink():\n \
+        \       if not link.is_symlink() or link.resolve() != target.resolve():\n            raise RuntimeError('Unexpected\
+        \ enabled Nginx file')\n    if previous != content:\n        if previous:\n            write(BASE / 'backups'\
+        \ / domain / (str(time.time_ns()) + '.nginx'), previous)\n        write(target, content, 0o644)\n    made_link\
+        \ = not link.is_symlink()\n    if made_link:\n        link.symlink_to(target)\n    try:\n        run(['nginx',\
+        \ '-t'])\n        run(['systemctl', 'reload', 'nginx'])\n    except Exception:\n        if previous is not\
+        \ None:\n            write(target, previous, 0o644)\n        else:\n            target.unlink(missing_ok=True)\n\
+        \        if made_link:\n            link.unlink(missing_ok=True)\n        run(['nginx', '-t'])\n       \
+        \ run(['systemctl', 'reload', 'nginx'])\n        raise\n    if not dns_ready(domain):\n        return {'status':\
+        \ 'deployed_waiting_dns', 'www': 'ready' if www_ready else 'waiting_dns'}\n    # Certbot plugin expands\
+        \ existing certificates and preserves proxy configuration.\n    args = ['certbot', '--nginx', '--non-interactive',\
+        \ '--agree-tos', '--redirect',\n            '--keep-until-expiring', '--expand', '--cert-name', domain,\
+        \ '-m', CFG['admin_email']]\n    for host in hosts:\n        args.extend(['-d', host])\n    try:\n     \
+        \   run(args, timeout=240)\n        run(['nginx', '-t'])\n        run(['systemctl', 'reload', 'nginx'])\n\
+        \        # Uses normal public DNS and validates certificate trust and hostname.\n        with urllib.request.urlopen('https://'\
+        \ + domain + '/', timeout=20) as response:\n            if response.status != 200:\n                raise\
+        \ RuntimeError('Public HTTPS health failed')\n        return {'status': 'https_ready', 'www': 'ready' if\
+        \ www_ready else 'waiting_dns'}\n    except Exception as exc:\n        return {'status': 'deployed_tls_needs_attention',\
+        \ 'detail': type(exc).__name__,\n                'www': 'ready' if www_ready else 'waiting_dns'}\n\ndef\
+        \ main():\n    global CFG\n    os.umask(0o077)\n    CFG = json.loads(Path('/etc/olamide-github-deploy.json').read_text())\n\
+        \    with (BASE / 'worker.lock').open('w') as lock:\n        try:\n            fcntl.flock(lock, fcntl.LOCK_EX\
+        \ | fcntl.LOCK_NB)\n        except BlockingIOError:\n            print('Deployment already running')\n \
+        \           return\n        results = []\n        for site in CFG['sites']:\n            result = {'domain':\
+        \ site['domain'], 'checked_at': int(time.time()), 'repo': site.get('repo')}\n            try:\n        \
+        \        target = Path('/etc/nginx/sites-available') / ('olamide-auto-' + site['domain'])\n            \
+        \    # Check conflicts before stopping applications or updating code.\n                conflicts(site['domain'],\
+        \ target)\n                source = checkout(site)\n                if source is None:\n               \
+        \     result['status'] = 'waiting_repository'\n                else:\n                    root, sha = source\n\
+        \                    result['commit'] = sha\n                    previous_path = BASE / 'status' / (site['domain']\
+        \ + '.json')\n                    previous = json.loads(previous_path.read_text()) if previous_path.exists()\
+        \ else {}\n                    if previous.get('commit') == sha and previous.get('application_ready'):\n\
+        \                        location = previous['location']\n                        if site.get('port'):\n\
+        \                            health(site['port'], site.get('health', '/'))\n                    else:\n\
+        \                        if site['kind'] == 'panel':\n                            location = panel(site,\
+        \ root, sha)\n                        elif site['kind'] == 'browser':\n                            location\
+        \ = browser(site, root, sha)\n                        elif site['kind'] == 'static':\n                 \
+        \           location = static_site(site, root, sha)\n                        else:\n                   \
+        \         location = app(site, root, sha)\n                    result.update(application_ready=True, location=location)\n\
+        \                    result.update(vhost(site, location))\n            except Exception as exc:\n      \
+        \          # Avoid leaking SQL credentials, process environment or HTTP response bodies.\n             \
+        \   result.update(status='needs_attention', error=str(exc) if isinstance(exc, (RuntimeError, ValueError))\
+        \ else type(exc).__name__)\n            write(BASE / 'status' / (site['domain'] + '.json'), json.dumps(result,\
+        \ indent=2) + '\\n', 0o644)\n            results.append(result)\n        write(BASE / 'status.json', json.dumps(results,\
+        \ indent=2) + '\\n', 0o644)\n        print(json.dumps(results, indent=2))\n\nif __name__ == '__main__':\n\
+        \    main()\n"
+  - name: Check worker Python syntax
+    ansible.builtin.command: python3 -m py_compile /usr/local/sbin/olamide-github-deploy
+    changed_when: false
+  - name: Inspect previous static hosting retry timer
+    ansible.builtin.stat:
+      path: /etc/systemd/system/olamide-six-domains.timer
+    register: old_hosting_timer
+  - name: Disable previous timer so it cannot rewrite deployed application proxies
+    ansible.builtin.systemd:
+      name: olamide-six-domains.timer
+      enabled: false
+      state: stopped
+    when: old_hosting_timer.stat.exists
+  - name: Wait for any existing static hosting worker to finish
+    ansible.builtin.command: systemctl is-active olamide-six-domains.service
+    register: old_hosting_worker
+    failed_when: false
+    changed_when: false
+    until: old_hosting_worker.stdout not in ['active', 'activating', 'deactivating']
+    retries: 300
+    delay: 10
+    when: old_hosting_timer.stat.exists
+  - name: Install deployment service
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/olamide-github-deploy.service
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=Pull and deploy operator GitHub websites
+        Wants=network-online.target
+        After=network-online.target nginx.service
+        [Service]
+        Type=oneshot
+        User=root
+        UMask=0077
+        ExecStart=/usr/local/sbin/olamide-github-deploy
+        TimeoutStartSec=2h
+  - name: Install hourly repository and DNS retry timer
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/olamide-github-deploy.timer
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=Retry repository deployment and DNS/HTTPS every hour
+        [Timer]
+        OnBootSec=5min
+        OnUnitInactiveSec=1h
+        RandomizedDelaySec=120
+        Unit=olamide-github-deploy.service
+        [Install]
+        WantedBy=timers.target
+  - name: Enable Nginx and certificate renewal
+    ansible.builtin.systemd:
+      name: '{{ item }}'
+      enabled: true
+      state: started
+      daemon_reload: true
+    loop:
+    - nginx
+    - certbot.timer
+  - name: Run pull, backup, deployment and health checks
+    ansible.builtin.command: /usr/local/sbin/olamide-github-deploy
+    async: 7200
+    poll: 10
+    register: deployment_run
+    changed_when: true
+    when: not ansible_check_mode
+  - name: Configure periodic automatic deployment
+    ansible.builtin.systemd:
+      name: olamide-github-deploy.timer
+      enabled: '{{ deployment_auto_update | bool }}'
+      state: '{{ ''started'' if deployment_auto_update | bool else ''stopped'' }}'
+      daemon_reload: true
+  - name: Show actual deployment outcomes
+    ansible.builtin.debug:
+      var: deployment_run.stdout_lines
+    when: not ansible_check_mode
+  - name: Read per-domain outcome report
+    ansible.builtin.slurp:
+      src: /var/lib/olamide-github-deploy/status.json
+    register: deployment_report
+    when: not ansible_check_mode
+  - name: Report incomplete deployments as a failed play while retaining successful sites and retries
+    ansible.builtin.assert:
+      that:
+      - deployment_report.content | b64decode | from_json | selectattr('status', 'equalto', 'needs_attention') |
+        list | length == 0
+      - deployment_report.content | b64decode | from_json | selectattr('status', 'equalto', 'deployed_tls_needs_attention')
+        | list | length == 0
+      fail_msg: Some sites need attention. Read the report above; successful sites remain deployed and the retry
+        timer is configured.
+    when: not ansible_check_mode
