@@ -1,0 +1,3 @@
+---
+- import_playbook: hosting-all-domains.yml
+- import_playbook: enable-hosting-domain-gui.yml
