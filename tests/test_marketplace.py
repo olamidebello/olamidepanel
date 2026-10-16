@@ -22,3 +22,17 @@ class MarketplaceTest(unittest.TestCase):
         self.assertEqual(marketplace.transition('pending','approve',True),'approved')
         self.assertEqual(marketplace.transition('pending','cancel',False),'cancelled')
         with self.assertRaises(ValueError):marketplace.transition('pending','approve',False)
+    def test_navigation_is_scoped_by_role(self):
+        for role in ['user','readonly']:
+            names={item['name'] for item in marketplace.navigation({'role':role})}
+            self.assertIn('Hosting Plans',names);self.assertIn('Browse Stores',names)
+            self.assertNotIn('Payment Gateways',names);self.assertNotIn('Store Settings',names)
+        names={i['name'] for i in marketplace.navigation({'role':'reseller'})}
+        self.assertIn('Store Orders',names);self.assertNotIn('Access Control',names)
+        self.assertIn('Reseller Access',{i['name'] for i in marketplace.navigation({'role':'root'})})
+    def test_store_validation_and_cross_store_denial(self):
+        self.assertEqual(marketplace.store_fields({'name':' My Store ','contact_email':'support@example.com'}),('My Store','','support@example.com'))
+        with self.assertRaises(ValueError):marketplace.store_fields({'name':'Store','contact_email':'bad@address'})
+        status,_=marketplace.handle('POST','/api/marketplace/store/save',{'role':'reseller','id':4},{'owner_id':5,'name':'Other Store'})
+        self.assertEqual(status,403)
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/store/save',{'role':'user','id':4},{})[0],403)

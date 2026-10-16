@@ -252,6 +252,13 @@
             }
           }
       notify: Reload Nginx
+    - name: Set bounded upload limit while preserving existing TLS configuration
+      ansible.builtin.lineinfile:
+        path: /etc/nginx/sites-available/olamidepanel
+        regexp: '^\s*client_max_body_size\s+'
+        line: '  client_max_body_size 16m;'
+        insertafter: '^server \{'
+      notify: Reload Nginx
     - name: Enable panel virtual host
       ansible.builtin.file:
         src: /etc/nginx/sites-available/olamidepanel

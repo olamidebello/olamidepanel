@@ -9,6 +9,8 @@ import marketplace
 import payments
 import modules
 import websites
+import storage
+import mfa
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -67,9 +69,18 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
+                if self.path.startswith('/api/storage/download'):
+                    name,data=storage.download(u,self.path)
+                    from urllib.parse import quote
+                    self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(name));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+                if self.path.startswith('/api/storage/'):
+                    return self.reply(200,storage.handle('GET',self.path,u))
+                if self.path.startswith('/api/files?'):
+                    return self.reply(200,storage.handle('GET',self.path.replace('/api/files?','/api/storage/files?',1),u))
                 if self.path=='/api/websites':
                     status,value=websites.handle('GET',self.path,u)
                     return self.reply(status,value)
+                if self.path=='/api/mfa':return self.reply(200,mfa.status(u['id']))
                 if self.path=='/api/modules' and allowed(u,'users.manage'):return self.reply(200,modules.report())
                 if self.path.startswith('/api/payments/'):
                     status,value=payments.handle('GET',self.path,u)
@@ -92,11 +103,6 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == '/api/domains':
                     with db() as con: rows = con.execute('SELECT id,name,created FROM domains WHERE owner=?',(u['id'],)).fetchall()
                     return self.reply(200, [dict(x) for x in rows])
-                if self.path.startswith('/api/files?'):
-                    from urllib.parse import parse_qs, urlsplit
-                    q = parse_qs(urlsplit(self.path).query); path = safe_path(u['id'], q.get('path',[''])[0])
-                    if path.is_file(): return self.reply(200, {'content':path.read_text()[:1048576]})
-                    return self.reply(200, [{'name':x.name,'directory':x.is_dir(),'size':x.stat().st_size} for x in sorted(path.iterdir()) if not x.is_symlink()])
                 if self.path == '/api/audit' and allowed(u, 'audit.read'):
                     with db() as con: rows=con.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100').fetchall()
                     return self.reply(200,[dict(x) for x in rows])
@@ -112,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if length > 1100000: return self.reply(413, {'error':'Request too large'})
+            if length < 0 or length > 12000000: return self.reply(413, {'error':'Request too large'})
             raw=self.rfile.read(length)
             if self.path.startswith('/api/payments/webhook/'):
                 status,value=payments.webhook(self.path,raw,self.headers)
@@ -127,6 +133,7 @@ class Handler(BaseHTTPRequestHandler):
                 with db() as con: row=con.execute('SELECT * FROM users WHERE username=?',(body.get('username',''),)).fetchone()
                 digest=password_hash(body.get('password',''),row['salt'] if row else '00'*16)
                 if not row or not row['active'] or not hmac.compare_digest(digest,row['password']): return self.reply(401,{'error':'Invalid credentials'})
+                if not mfa.verify(row['id'],body.get('mfa_code','')):return self.reply(401,{'error':'Enter a fresh authenticator code or an unused recovery code'})
                 if body.get('accept_terms') is not True: return self.reply(400, {'error':'Confirm the Terms and acknowledge the Privacy Notice to sign in'})
                 with db() as con:
                     con.execute('INSERT INTO legal_acceptances(user_id,version,accepted_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE accepted_at=VALUES(accepted_at)',(row['id'],TERMS_VERSION,int(now)))
@@ -141,6 +148,17 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/mfa':
+                with db() as con:row=con.execute('SELECT salt,password FROM users WHERE id=?',(u['id'],)).fetchone()
+                if not hmac.compare_digest(password_hash(body.get('current_password',''),row['salt']),row['password']):raise ValueError('Current password is incorrect')
+                result=mfa.manage(u,body)
+                with db() as con:con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],'mfa:'+str(body.get('action','')),int(time.time())))
+                return self.reply(200,result)
+            if self.path.startswith('/api/storage/') or self.path=='/api/files':
+                route='/api/storage/files' if self.path=='/api/files' else self.path
+                result=storage.handle('POST',route,u,body)
+                with db() as con:con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],'storage:'+body.get('action',''),int(time.time())))
+                return self.reply(200,result)
             if self.path=='/api/websites':
                 status,value=websites.handle('POST',self.path,u,body)
                 return self.reply(status,value)
@@ -160,28 +178,6 @@ class Handler(BaseHTTPRequestHandler):
                 if len(name)>253 or not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',name): raise ValueError('Enter a valid domain name')
                 with db() as con: con.execute('INSERT INTO domains(owner,name,created) VALUES(?,?,?)',(u['id'],name,int(time.time())))
                 result={'ok':True,'status':'Domain saved. Open Site Publisher for DNS-verified static website publishing.'}
-            elif self.path == '/api/files':
-                if not allowed(u, 'files.write'): return self.reply(403, {'error':'Read-only access'})
-                path=safe_path(u['id'],body['path'])
-                if path==home(u['id']): raise ValueError('Choose a file or folder')
-                action=body['action']
-                if action=='mkdir': path.mkdir()
-                elif action=='write':
-                    content=body['content']
-                    if len(content.encode())>1048576: raise ValueError('File limit is 1 MiB')
-                    path.write_text(content); path.chmod(0o600)
-                elif action in ['rename','copy']:
-                    target=safe_path(u['id'],body['destination'])
-                    if not path.is_file() or target.exists(): raise ValueError('Choose a file and an unused destination')
-                    if action=='rename': path.rename(target)
-                    else:
-                        if path.stat().st_size>1048576: raise ValueError('Copy limit is 1 MiB')
-                        shutil.copyfile(path,target);target.chmod(0o600)
-                elif action=='delete':
-                    if path.is_dir(): path.rmdir()
-                    else: path.unlink()
-                else: raise ValueError('Unsupported file operation')
-                result={'ok':True}
             elif self.path == '/api/users' and allowed(u, 'users.manage'):
                 role=body.get('role','user')
                 if role not in ROLE_LEVELS or ROLE_LEVELS[role] > ROLE_LEVELS[u['role']]: return self.reply(403, {'error':'Cannot grant a higher role'})
@@ -201,6 +197,7 @@ class Handler(BaseHTTPRequestHandler):
             else: return self.reply(404,{'error':'Unknown operation'})
             with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],self.path+':'+body.get('action','create')+':target='+str(body.get('id',body.get('username','self'))),int(time.time())))
             self.reply(200,result)
+        except PermissionError as e:self.reply(403,{'error':str(e)})
         except payments.PaymentError as e: self.reply(502,{'error':str(e)})
         except (ValueError, KeyError, OSError, IntegrityError) as e: self.reply(400,{'error':str(e)})
 

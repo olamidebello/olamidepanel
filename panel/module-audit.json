@@ -1,0 +1,1410 @@
+[
+  {
+    "category": "Marketplace",
+    "name": "Marketplace Dashboard",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Hosting Plans",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Browse Stores",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "My Orders",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Reseller Catalog",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Store Orders",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Store Settings",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Payment Gateways",
+    "status": "partial",
+    "source": "panel/payments.py",
+    "api": "/api/payments/gateways",
+    "detail": "Scoped merchant settings, encrypted credentials; Stripe and Paystack hosted checkout adapters. Other providers unsupported; merchant testing required."
+  },
+  {
+    "category": "Marketplace",
+    "name": "Payments",
+    "status": "partial",
+    "source": "panel/payments.py",
+    "api": "/api/payments/transactions; /api/payments/checkout",
+    "detail": "Signed webhooks and verified one-time payments. No subscriptions, refunds, tax engine or automatic hosting provisioning."
+  },
+  {
+    "category": "Files",
+    "name": "File Manager",
+    "status": "partial",
+    "source": "panel/storage.py",
+    "api": "/api/storage/files; /api/storage/download",
+    "detail": "Create/edit/upload/download/copy/rename/delete and ZIP. No permissions editor, HTML editor, trash or shared hosting filesystem."
+  },
+  {
+    "category": "Files",
+    "name": "Images",
+    "status": "implemented",
+    "source": "panel/storage.py",
+    "api": "/api/storage/files action=image",
+    "detail": "Bounded aspect-preserving PNG/JPEG/WEBP resizing/conversion; input 8 MiB, 10 million pixels."
+  },
+  {
+    "category": "Files",
+    "name": "Directory Privacy",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Disk Usage",
+    "status": "implemented",
+    "source": "panel/storage.py",
+    "api": "/api/storage/usage",
+    "detail": "Account workspace bytes and file/directory count. 250 MiB application limit; not a Linux hosting-package quota."
+  },
+  {
+    "category": "Files",
+    "name": "FTP Accounts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "FTP Connections",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Anonymous FTP",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Web Disk",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Git Version Control",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Git Deployment",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated FTP/WebDAV/Git or directory-access service adapter and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Files",
+    "name": "Backups",
+    "status": "partial",
+    "source": "panel/storage.py",
+    "api": "/api/storage/backups; /api/storage/download",
+    "detail": "Manual account-file ZIP snapshots, five maximum, 64 MiB expanded limit; restore into new folder. No MySQL/mail/full-account backup or schedules."
+  },
+  {
+    "category": "Files",
+    "name": "Backup Wizard",
+    "status": "partial",
+    "source": "panel/storage.py",
+    "api": "/api/storage/backups; /api/storage/download",
+    "detail": "Manual account-file ZIP snapshots, five maximum, 64 MiB expanded limit; restore into new folder. No MySQL/mail/full-account backup or schedules."
+  },
+  {
+    "category": "Files",
+    "name": "File Restoration",
+    "status": "partial",
+    "source": "panel/storage.py",
+    "api": "/api/storage/backups; /api/storage/download",
+    "detail": "Manual account-file ZIP snapshots, five maximum, 64 MiB expanded limit; restore into new folder. No MySQL/mail/full-account backup or schedules."
+  },
+  {
+    "category": "Domains",
+    "name": "Domains",
+    "status": "partial",
+    "source": "panel/server.py; panel/websites.py",
+    "api": "/api/domains; /api/websites",
+    "detail": "Owned domain inventory. DNS-verified static publishing is separate; no authoritative zone editor or general web hosting."
+  },
+  {
+    "category": "Domains",
+    "name": "Redirects",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Domains",
+    "name": "DNS Zone Editor",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Domains",
+    "name": "Dynamic DNS",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Domains",
+    "name": "Site Publisher",
+    "status": "partial",
+    "source": "panel/websites.py; deploy/provision_websites.py",
+    "api": "/api/websites",
+    "detail": "Static template publication using TXT ownership and IPv4 checks, Nginx and Certbot worker. Needs live worker/DNS verification."
+  },
+  {
+    "category": "Domains",
+    "name": "Site Builder",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Domains",
+    "name": "SEO",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Domains",
+    "name": "Social Media",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing DNS/provider integration or site-builder/social/SEO adapter, credentials and end-to-end workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Email Accounts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Forwarders",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Domain Forwarders",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Autoresponders",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Default Address",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Email Routing",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Email Filters",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Global Filters",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Email Deliverability",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Email Disk Usage",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Address Importer",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Archive",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Mailing Lists",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "BoxTrapper",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Greylisting",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Encryption",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Calendars and Contacts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Calendar Sharing",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Calendar Delegation",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Spam Filters",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Track Delivery",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Email",
+    "name": "Webmail",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+  },
+  {
+    "category": "Databases",
+    "name": "Database Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "Database Users",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "Database Wizard",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "phpMyAdmin",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "Remote Database Access",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "PostgreSQL",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "PostgreSQL Wizard",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Databases",
+    "name": "phpPgAdmin",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Only the internal panel MySQL database exists. Missing tenant database/user/privilege broker and GUI operations."
+  },
+  {
+    "category": "Security",
+    "name": "SSH Access",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "IP Blocker",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "SSL/TLS",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Private Keys",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Certificate Signing Requests",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Certificates",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "SSL Sites",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "SSL Status",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "AutoSSL",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "ModSecurity",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Hotlink Protection",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Leech Protection",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Two-Factor Authentication",
+    "status": "implemented",
+    "source": "panel/mfa.py; panel/schema.sql",
+    "api": "/api/mfa; /api/login",
+    "detail": "TOTP enrollment/verification, encrypted secrets, replay checks, single-use recovery codes, password-confirmed changes and session revocation."
+  },
+  {
+    "category": "Security",
+    "name": "API Tokens",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Security",
+    "name": "Security Policy",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tested SSH/TLS/WAF/firewall/token or other security adapter with account-scoped authorization."
+  },
+  {
+    "category": "Software",
+    "name": "PHP Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "PHP-FPM",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "PHP INI Editor",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Application Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Environment Variables",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Application Dependencies",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Optimize Website",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Perl Modules",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "PEAR Packages",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "RubyGems",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Ruby on Rails",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Software",
+    "name": "Application Installer",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing isolated runtime/build worker, package/runtime lifecycle and matching API/GUI operations."
+  },
+  {
+    "category": "Metrics",
+    "name": "Server Metrics",
+    "status": "partial",
+    "source": "panel/server.py",
+    "api": "/api/metrics",
+    "detail": "Real host disk totals/load/hostname. No historical traffic, per-tenant CPU accounting or uptime alerting."
+  },
+  {
+    "category": "Metrics",
+    "name": "Visitors",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Errors",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Bandwidth",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Raw Access",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "AWStats",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Analog Stats",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Webalizer",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "FTP Statistics",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Metrics Editor",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Resource Usage",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Metrics",
+    "name": "Site Monitoring",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing scoped log/statistics collection, retention, query backend and matching UI."
+  },
+  {
+    "category": "Advanced",
+    "name": "Terminal",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Cron Jobs",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Track DNS",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Indexes",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Error Pages",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Apache Handlers",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "MIME Types",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "API Shell",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Advanced",
+    "name": "Virus Scanner",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing tenant isolation and constrained service broker or network/cron/scan adapter with matching API/GUI operations."
+  },
+  {
+    "category": "Preferences",
+    "name": "Password and Security",
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
+  },
+  {
+    "category": "Preferences",
+    "name": "Language",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing corresponding persisted settings or team membership model, authorization and GUI workflow."
+  },
+  {
+    "category": "Preferences",
+    "name": "Contact Information",
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
+  },
+  {
+    "category": "Preferences",
+    "name": "Account Preferences",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing corresponding persisted settings or team membership model, authorization and GUI workflow."
+  },
+  {
+    "category": "Preferences",
+    "name": "User Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing corresponding persisted settings or team membership model, authorization and GUI workflow."
+  },
+  {
+    "category": "Preferences",
+    "name": "Manage Team",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing corresponding persisted settings or team membership model, authorization and GUI workflow."
+  },
+  {
+    "category": "Administration",
+    "name": "Module Readiness",
+    "status": "implemented",
+    "source": "panel/modules.py; panel/module-audit.json",
+    "api": "/api/modules",
+    "detail": "Per-module and per-tool implementation inventory; deployment readiness still requires live verification."
+  },
+  {
+    "category": "Administration",
+    "name": "Reseller Access",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Administration",
+    "name": "Hosting Catalog",
+    "status": "partial",
+    "source": "panel/marketplace.py; panel/schema.sql",
+    "api": "/api/marketplace/*",
+    "detail": "Persistent plans, orders, store profiles, role-based navigation, vendor approval and store ownership. No automated Linux account fulfillment, metering, recurring billing or payouts."
+  },
+  {
+    "category": "Administration",
+    "name": "Access Control",
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
+  },
+  {
+    "category": "Administration",
+    "name": "Create Panel User",
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
+  },
+  {
+    "category": "Administration",
+    "name": "Audit Log",
+    "status": "implemented",
+    "source": "panel/server.py; panel/schema.sql",
+    "api": "/api/profile; /api/users; /api/users/update; /api/audit",
+    "detail": "Panel account/profile/password/role and audit operations only; panel root does not grant Linux root."
+  },
+  {
+    "category": "Administration",
+    "name": "List Accounts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Suspended Accounts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Account Provisioning",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Account Suspension",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Account Termination",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Shell Access",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "IP Assignment",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Bandwidth Limits",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Packages",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Feature Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Resellers",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Server Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Hostname and Resolvers",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "IP Management",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "DNS Zones",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "DNS Templates",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "DNS Cluster",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Configuration Cluster",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Backup Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Backup Restoration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Account Transfers",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Apache Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "PHP Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Mail Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "FTP Configuration",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Service Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Log Rotation",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Package Management",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Database Services",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Mail Queue",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Delivery Reports",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Brute Force Protection",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Host Access Control",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Compiler Access",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Service Certificates",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Process Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Task Queue",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Service Restarts",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "System Reboot",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Contact Manager",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Hooks",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Plugins",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Branding",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Themes and Locales",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Administration",
+    "name": "Support",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing OS-level account/service/resource management adapter, scoped authorization and matching GUI workflow. Existing Access Control manages panel accounts only."
+  },
+  {
+    "category": "Integrations",
+    "name": "WP Toolkit",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "Softaculous",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "CloudLinux",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "LiteSpeed",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "JetBackup",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "Comet Backup",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "Imunify",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "External DNS/CDN",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "Billing",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "External Monitoring",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Integrations",
+    "name": "AI Services",
+    "status": "not implemented",
+    "source": "panel/static/app.js (planned card only)",
+    "api": "None",
+    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  }
+]

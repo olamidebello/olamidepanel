@@ -236,3 +236,22 @@ PY
 Do not share that output. Sign in and change your own password in Preferences → Password and Security. Use Administration → Access Control → Manage to assign/reset lower-level users' passwords. These GUI features manage panel accounts, not MySQL root or application database credentials. The bootstrap file retains the initial password; it does not track subsequent GUI password changes. Provisioning preserves existing panel passwords, so rerunning deployment does not reset a password changed in the GUI. Store the bootstrap file with encrypted backups and restrict host root access.
 
 This supersedes earlier instructions requiring manual entry of all three passwords for a bare installation. Existing external MySQL installations still require their actual operator credentials; the standalone configure-mysql playbook does not generate unknown existing-server passwords.
+
+## Deploy and verify the reviewed module batch
+
+The module deployment now includes the optional DNS-verified static-site worker, account storage tools, bounded uploads/archives/images, file snapshots and TOTP. See `docs/MODULE_AUDIT.md` for all 176 GUI tools and explicit gaps, and `docs/FILES_AND_MFA.md` for usage and limits.
+
+On the authenticated server root shell:
+
+```sh
+cd /root/olamidepanel &&
+git pull --ff-only &&
+ansible-playbook -i /root/olamidepanel-private/local.ini \
+  ansible/deploy-available-modules.yml --ask-vault-pass \
+  -e @/root/olamidepanel-private/deploy-vault.yml \
+  -e panel_public_ipv4=181.214.149.146
+```
+
+This installs dependencies including Pillow, updates schema/code/service configuration, enables the static publisher timer, verifies HTTPS, runs non-production unit tests and prints the implementation inventory. It preserves credentials, data and existing certificates. Keep `/etc/olamidepanel/payment.key`: MFA and gateway credential decryption depend on it. A successful playbook does not certify planned modules or payment-provider integration.
+
+After deployment, test login, upload/download, ZIP extraction and non-destructive snapshot recovery in a test account. Enroll MFA and save recovery codes before signing out. Test publisher ownership and DNS/TLS separately with a domain you control. Never point integration tests at the production panel database: the CI suite uses a disposable MySQL 8.4 database and creates test accounts.

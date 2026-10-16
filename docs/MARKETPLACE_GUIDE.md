@@ -83,3 +83,11 @@ These are editable planning examples, not market-rate claims, tested capacity, d
 Additional APIs: GET `/api/marketplace/capabilities`, GET `/api/marketplace/vendors` and POST `/api/marketplace/vendors/save` (super-admin only; id and enabled boolean). Plan saves accept `plan_kind=hosting|reseller`; the server assigns seller ownership for new plans and forbids reassignment through the client.
 
 The disposable MySQL integration suite includes cross-reseller edit/order isolation and disabled-storefront visibility checks. These tests remain unexecuted locally without MySQL. A browser/live-server verification is still required after deployment.
+
+## Marketplace menus and store profiles
+
+The Marketplace sidebar submenu and in-page navigation load from authenticated `/api/marketplace/navigation`. Shoppers see Dashboard, Hosting Plans, Browse Stores, My Orders and Payments. Resellers additionally see Reseller Catalog, Store Orders, Store Settings and Payment Gateways. Root/super admins see Hosting Catalog, all-store orders/settings, Reseller Access, gateways and Access Control. Hidden menu items do not replace server authorization. Browser Back/Forward and saved `#tool=` links restore the selected tool; Refresh reloads its records.
+
+Browse Stores lists the operator and enabled, active reseller storefronts; View store plans filters the existing plan catalog. Show all stores clears the filter. Store Settings persists name, description and contact email in MySQL `marketplace_stores`. These fields are visible to signed-in shoppers. A reseller can edit only their own enabled store. Super admins can choose the operator (ID 0) or a reseller from the selector. Disabling a reseller hides its store/profile/plans and blocks edits. Store profiles do not collect card credentials.
+
+My Orders uses `/api/marketplace/orders?scope=purchases` and shows only the signed-in buyer's purchases. Store Orders uses `scope=store` and shows the reseller's incoming orders, or all stores for root/super admin. Existing approval/rejection/cancellation and hosted checkout buttons call their authorized APIs. The unfiltered API remains compatible; each query is limited to the latest 200 visible orders. Order approval and successful payment still require separate manual hosting fulfillment.

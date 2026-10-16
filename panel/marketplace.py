@@ -26,11 +26,35 @@ def transition(current,action,admin):
     if admin and action in ['approve','reject']: return 'approved' if action=='approve' else 'rejected'
     raise ValueError('Operation not permitted')
 
+def navigation(user):
+    items=[('Marketplace Dashboard','Shop'),('Hosting Plans','Shop'),('Browse Stores','Shop'),('My Orders','Purchases'),('Payments','Purchases')]
+    if user['role']=='reseller':items += [('Reseller Catalog','Your store'),('Store Orders','Your store'),('Store Settings','Your store'),('Payment Gateways','Your store')]
+    if user['role'] in ADMIN_ROLES:items += [('Hosting Catalog','Administration'),('Store Orders','Administration'),('Store Settings','Administration'),('Reseller Access','Administration'),('Payment Gateways','Administration'),('Access Control','Administration')]
+    return [{'name':name,'group':group} for name,group in items]
+
+def store_fields(body):
+    name=str(body.get('name','')).strip();description=str(body.get('description','')).strip();email=str(body.get('contact_email','')).strip()
+    if not 2<=len(name)<=80 or len(description)>1000:raise ValueError('Store name must be 2–80 characters; description limit is 1000')
+    if len(email)>254 or (email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email)):raise ValueError('Enter a valid contact email or leave it blank')
+    return name,description,email
+
 def handle(method,path,user,body=None):
     admin=user['role'] in ADMIN_ROLES
-    suffix=path.removeprefix('/api/marketplace/')
+    from urllib.parse import urlsplit,parse_qs
+    parsed=urlsplit(path);query_params=parse_qs(parsed.query)
+    suffix=parsed.path.removeprefix('/api/marketplace/')
+    if method=='GET' and suffix=='navigation':return 200,navigation(user)
     if method=='GET':
         with connect() as con:
+            if suffix=='stores':
+                return 200,con.execute("SELECT 0 AS owner_id,COALESCE(s.name,'OlamidePanel operator') AS name,COALESCE(s.description,'') AS description,COALESCE(s.contact_email,'') AS contact_email FROM (SELECT 1) seed LEFT JOIN marketplace_stores s ON s.owner_id=0 UNION ALL SELECT u.id,COALESCE(s.name,u.username),COALESCE(s.description,''),COALESCE(s.contact_email,'') FROM marketplace_vendors v JOIN users u ON u.id=v.user_id LEFT JOIN marketplace_stores s ON s.owner_id=u.id WHERE v.enabled=1 AND u.active=1 AND u.role='reseller'").fetchall()
+            if suffix=='store':
+                if not admin and user['role']!='reseller':return 403,{'error':'Seller access required'}
+                owner=0 if admin else user['id']
+                if admin and 'owner_id' in query_params:owner=int(query_params['owner_id'][0])
+                if owner and not con.execute("SELECT id FROM users WHERE id=? AND role='reseller'",(owner,)).fetchone():raise ValueError('Unknown reseller store')
+                row=con.execute('SELECT * FROM marketplace_stores WHERE owner_id=?',(owner,)).fetchone()
+                return 200,row or {'owner_id':owner,'name':'OlamidePanel operator' if owner==0 else user['username'],'description':'','contact_email':''}
             if suffix=='vendors':
                 if not admin:return 403,{'error':'Super-admin access required'}
                 return 200,con.execute("SELECT u.id,u.username,u.active,COALESCE(v.enabled,0) AS enabled FROM users u LEFT JOIN marketplace_vendors v ON v.user_id=u.id WHERE u.role='reseller' ORDER BY u.username").fetchall()
@@ -51,6 +75,13 @@ def handle(method,path,user,body=None):
                 if not admin:
                     query+=' WHERE o.owner=?';args=(user['id'],)
                     if user['role']=='reseller':query+=' OR o.seller_id=?';args=(user['id'],user['id'])
+                scope=query_params.get('scope',['visible'])[0]
+                if scope not in ['visible','purchases','store']:raise ValueError('Unknown order scope')
+                if scope=='purchases':
+                    query='SELECT o.*,u.username FROM hosting_orders o JOIN users u ON u.id=o.owner WHERE o.owner=?';args=(user['id'],)
+                if scope=='store':
+                    if not admin and user['role']!='reseller':return 403,{'error':'Seller access required'}
+                    if not admin:query='SELECT o.*,u.username FROM hosting_orders o JOIN users u ON u.id=o.owner WHERE o.seller_id=?';args=(user['id'],)
                 return 200,con.execute(query+' ORDER BY o.id DESC LIMIT 200',args).fetchall()
             if suffix=='summary':
                 where='' if admin else ' WHERE owner=?';args=() if admin else (user['id'],)
@@ -60,6 +91,19 @@ def handle(method,path,user,body=None):
         return 404,{'error':'Unknown marketplace operation'}
     if method!='POST':return 405,{'error':'Unsupported method'}
     if user['role']=='readonly':return 403,{'error':'Read-only access'}
+    if suffix=='store/save':
+        if not admin and user['role']!='reseller':return 403,{'error':'Seller access required'}
+        owner=integer(body,'owner_id',0,2**63-1)
+        if not admin and owner!=user['id']:return 403,{'error':'You can only edit your own store'}
+        fields=store_fields(body)
+        with connect() as con:
+            if owner and not con.execute("SELECT id FROM users WHERE id=? AND role='reseller'",(owner,)).fetchone():raise ValueError('Unknown reseller store')
+            if not admin:
+                vendor=con.execute('SELECT enabled FROM marketplace_vendors WHERE user_id=? FOR UPDATE',(owner,)).fetchone()
+                if not vendor or not vendor['enabled']:return 403,{'error':'Store publishing is disabled by super admin'}
+            con.execute('INSERT INTO marketplace_stores(owner_id,name,description,contact_email,updated) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),contact_email=VALUES(contact_email),updated=VALUES(updated)',(owner,*fields,int(time.time())))
+            audit(con,user,'store saved '+str(owner))
+        return 200,{'ok':True}
     if suffix=='vendors/save':
         if not admin:return 403,{'error':'Super-admin access required'}
         uid=integer(body,'id',1,2**63-1)

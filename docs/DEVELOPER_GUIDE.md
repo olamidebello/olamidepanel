@@ -137,3 +137,7 @@ Use a fresh empty database per run; the suite creates persistent fixture usernam
 7. Mark the catalog entry Available only after the implementation exists. Update these guides and the feature inventory.
 
 Do not display vendor extensions as installed without their software/licensing and working adapters. Known unfinished systems include virtual hosts, DNS, mail, customer databases, backups, terminal, cron, quotas, MFA and billing.
+
+## Storage and MFA modules
+
+`panel/storage.py` owns bounded account-file operations and file snapshots. `panel/mfa.py` owns encrypted TOTP enrollment, locked verification and recovery consumption; `user_mfa` persists state in MySQL. Read [Files and MFA](FILES_AND_MFA.md) for API contracts and security limits. [Module audit](MODULE_AUDIT.md) and `panel/module-audit.json` enumerate every catalog tool; update both when adding tools, and keep `tests/test_module_audit.py` passing.

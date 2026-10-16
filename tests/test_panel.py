@@ -162,3 +162,41 @@ class PanelTest(unittest.TestCase):
             _,listed=payments.handle('GET','/api/payments/gateways',{'role':'root'})
             self.assertNotIn(secret,json.dumps(listed))
             self.assertEqual(payments.handle('GET','/api/payments/gateways',{'id':uid,'role':'user'})[0],403)
+    def test_mfa_enrollment_login_and_recovery(self):
+        from cryptography.fernet import Fernet
+        from unittest.mock import patch
+        import mfa
+        keyfile=Path(self.tmp.name)/'mfa.key';keyfile.write_bytes(Fernet.generate_key())
+        self.p.create_user('mfauser','mfa-test-long-password','user')
+        with patch.dict(os.environ,{'PANEL_PAYMENT_KEY':str(keyfile)}):
+            cookie,csrf=self.login('mfauser','mfa-test-long-password')
+            setup=json.load(self.request('mfa',{'action':'setup','current_password':'mfa-test-long-password'},cookie,csrf))
+            code=mfa.code(setup['secret'],int(mfa.time.time())//30)
+            enabled=json.load(self.request('mfa',{'action':'enable','current_password':'mfa-test-long-password','code':code},cookie,csrf))
+            with self.assertRaises(urllib.error.HTTPError):self.request('me',cookie=cookie)
+            with self.assertRaises(urllib.error.HTTPError):self.login('mfauser','mfa-test-long-password')
+            body={'username':'mfauser','password':'mfa-test-long-password','accept_terms':True,'mfa_code':enabled['recovery_codes'][0]}
+            response=self.request('login',body);cookie=response.headers['Set-Cookie'].split(';')[0]
+            csrf=json.load(self.request('me',cookie=cookie))['csrf']
+            with self.assertRaises(urllib.error.HTTPError):self.request('login',body)
+            self.request('mfa',{'action':'disable','current_password':'mfa-test-long-password','code':enabled['recovery_codes'][1]},cookie,csrf)
+            self.login('mfauser','mfa-test-long-password')
+    def test_marketplace_store_settings_persistence_and_navigation(self):
+        import marketplace
+        self.p.create_user('storemerchant','store-merchant-password','reseller')
+        self.p.create_user('storebuyer','store-buyer-long-password','user')
+        with self.p.db() as con:
+            seller=dict(con.execute("SELECT id,username,role FROM users WHERE username='storemerchant'").fetchone())
+            buyer=dict(con.execute("SELECT id,username,role FROM users WHERE username='storebuyer'").fetchone())
+        admin={'id':0,'username':'operator','role':'root'}
+        marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':seller['id'],'enabled':True})
+        settings={'owner_id':seller['id'],'name':'Merchant Store','description':'Hosting shop','contact_email':'support@example.com'}
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/store/save',seller,settings)[0],200)
+        _,stored=marketplace.handle('GET','/api/marketplace/store',seller);self.assertEqual(stored['name'],'Merchant Store')
+        _,stores=marketplace.handle('GET','/api/marketplace/stores',buyer);self.assertTrue(any(row['name']=='Merchant Store' for row in stores))
+        self.assertEqual(marketplace.handle('GET','/api/marketplace/store',buyer)[0],403)
+        self.assertEqual(marketplace.handle('GET','/api/marketplace/orders?scope=store',buyer)[0],403)
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/store/save',seller,{**settings,'owner_id':0})[0],403)
+        marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':seller['id'],'enabled':False})
+        self.assertEqual(marketplace.handle('POST','/api/marketplace/store/save',seller,settings)[0],403)
+        _,stores=marketplace.handle('GET','/api/marketplace/stores',buyer);self.assertFalse(any(row['owner_id']==seller['id'] for row in stores))

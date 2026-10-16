@@ -17,13 +17,29 @@ python3 -m venv /opt/olamidepanel/venv
 chown -R root:root /opt/olamidepanel
 chown root:olamidepanel /etc/olamidepanel/database.json
 chmod 640 /etc/olamidepanel/database.json
+/opt/olamidepanel/venv/bin/python - <<'PYKEY'
+import os
+from pathlib import Path
+from cryptography.fernet import Fernet
+key=Path('/etc/olamidepanel/payment.key')
+if not key.exists():
+    fd=os.open(key,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'wb') as stream:stream.write(Fernet.generate_key())
+PYKEY
+chown root:olamidepanel /etc/olamidepanel/payment.key
+chmod 640 /etc/olamidepanel/payment.key
+if [[ ! -e /etc/olamidepanel/runtime.env ]]; then
+  printf 'PANEL_PUBLIC_URL=https://%s\nPANEL_ENABLE_LIVE_PAYMENTS=0\n' "$hostname_arg" > /etc/olamidepanel/runtime.env
+  chown root:olamidepanel /etc/olamidepanel/runtime.env
+  chmod 640 /etc/olamidepanel/runtime.env
+fi
 install -d -o olamidepanel -g olamidepanel -m 700 /var/lib/olamidepanel
 install -m 644 "$(dirname "$0")/olamidepanel.service" /etc/systemd/system/
 cat > /etc/nginx/sites-available/olamidepanel <<EOF
 server {
  listen 80;
  server_name $hostname_arg;
- client_max_body_size 2m;
+ client_max_body_size 16m;
  location / {
   proxy_pass http://127.0.0.1:8090;
   proxy_set_header Host \$host;

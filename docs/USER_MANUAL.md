@@ -131,3 +131,7 @@ View up to the latest 100 recorded mutations, with actor, action/target and time
 | Page/API unavailable | Operator should check Nginx, service logs and MySQL connectivity |
 
 Do not send passwords, private keys or full database configuration in support screenshots.
+
+## Files, backups and authenticator protection
+
+See [Files and MFA](FILES_AND_MFA.md) for uploads/downloads, archives, image tools, account usage, snapshot restoration and two-factor enrollment. Administration → Module Readiness lists every tool's actual implementation scope. See [Module audit](MODULE_AUDIT.md) for remaining work.

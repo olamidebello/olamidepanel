@@ -1,6 +1,6 @@
 ---
 - name: Deploy implemented modules and prerequisites
-  ansible.builtin.import_playbook: deploy-bare-debian12.yml
+  ansible.builtin.import_playbook: enable-static-websites.yml
 
 - name: Validate installed code and report module gaps
   hosts: panel_servers
