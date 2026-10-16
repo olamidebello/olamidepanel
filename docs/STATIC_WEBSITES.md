@@ -21,7 +21,7 @@ This imports normal panel deployment, installs dnspython, installs olamidepanel-
 2. Open Domains → Site Publisher. Enter the page title/tagline and request publishing.
 3. Copy the returned token. At the authoritative DNS provider, add TXT `_olamidepanel.africandroid.world` with that exact value. Some providers expect the relative name `_olamidepanel` rather than the full name.
 4. Point the domain's A record exclusively to `181.214.149.146`. Remove AAAA records for this IPv4-only publisher. Ports 80/443 must be publicly reachable. The worker does not change DNS at your registrar.
-5. Wait for public DNS visibility, then request/retry publishing. Refresh publishing status. The timer checks ownership and address, creates a static page and requests HTTPS.
+5. Request publishing once. The timer checks ownership and address, creates a static page and requests HTTPS. DNS failures enter `waiting_dns` and are retried automatically every minute, with at most five jobs per pass. Use Refresh publishing status to see progress; no resubmission is needed after correcting DNS. Server/Certbot failures still require operator attention and an explicit retry to avoid repeatedly requesting certificates.
 6. Only a `published` status reports successful worker completion. Open the HTTPS link and verify it from outside the server.
 
 Keep the TXT proof for subsequent page changes. The template escapes title/tagline as text; no arbitrary HTML, executable content or shell commands are accepted. www is a separate hostname and is not configured automatically. The panel's own hostname is reserved and cannot be replaced through Site Publisher.

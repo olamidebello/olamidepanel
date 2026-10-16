@@ -31,7 +31,7 @@ def run():
     manifest_path=STATE/'managed.json';manifest=json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     with connect() as con:
         valid=con.execute("SELECT d.id FROM domains d JOIN users u ON u.id=d.owner WHERE u.active=1").fetchall()
-        jobs=con.execute("SELECT s.*,d.name,c.settings AS site_settings,c.revision AS controls_revision FROM website_requests s JOIN domains d ON d.id=s.domain_id LEFT JOIN website_controls c ON c.domain_id=d.id JOIN users u ON u.id=d.owner WHERE s.state='queued' AND u.active=1 ORDER BY s.updated LIMIT 5").fetchall()
+        jobs=con.execute("SELECT s.*,d.name,c.settings AS site_settings,c.revision AS controls_revision FROM website_requests s JOIN domains d ON d.id=s.domain_id LEFT JOIN website_controls c ON c.domain_id=d.id JOIN users u ON u.id=d.owner WHERE (s.state='queued' OR (s.state='waiting_dns' AND s.updated<=UNIX_TIMESTAMP()-60)) AND u.active=1 ORDER BY s.updated LIMIT 5").fetchall()
     active={str(r['id']) for r in valid}
     for uid in list(manifest):
         if uid not in active:
@@ -52,7 +52,10 @@ def run():
                 try:
                     if list(resolver.resolve(domain,'AAAA')):raise ValueError('Remove AAAA records for this IPv4-only publisher')
                 except (dns.resolver.NoAnswer,dns.resolver.NXDOMAIN):pass
-            except dns.exception.DNSException:raise ValueError('DNS proof/address lookup failed. Check TXT/A records and retry') from None
+            except (dns.exception.DNSException, ValueError) as error:
+                message = str(error) if isinstance(error, ValueError) else 'DNS proof/address lookup failed. Check TXT/A records.'
+                status(uid,'waiting_dns',message[:350]+'; automatic checks continue every minute. No resubmission needed.')
+                continue
             site=ROOT/str(uid)
             if site.is_symlink():raise ValueError('Unsafe site directory')
             site.mkdir(mode=0o755,parents=True,exist_ok=True)
