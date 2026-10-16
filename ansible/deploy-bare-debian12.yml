@@ -192,13 +192,20 @@
         mode: '0644'
       notify: Restart panel
     - name: Initialize schema and register initial panel root
-      become_user: olamidepanel
       ansible.builtin.command:
-        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/panel/server.py, --provision-user]
-        stdin: '{{ {"username": panel_admin_username, "password": panel_effective_admin_password, "role": "root", "active": true} | to_json }}'
+        argv:
+          - /usr/bin/python3
+          - /opt/olamidepanel/repo/deploy/provision_bootstrap.py
+        chdir: /tmp
       register: bootstrap_account
-      changed_when: (bootstrap_account.stdout | from_json).changed
+      changed_when: bootstrap_account.rc == 0 and ((bootstrap_account.stdout | from_json).changed | default(false))
+      failed_when: false
       no_log: true
+      when: not ansible_check_mode
+    - name: Verify bootstrap account result with redacted diagnostics
+      ansible.builtin.assert:
+        that: bootstrap_account.rc == 0
+        fail_msg: '{{ bootstrap_account.stdout | default("Bootstrap wrapper did not return a result") }}'
       when: not ansible_check_mode
     - name: Create initial Nginx virtual host without overwriting issued TLS configuration
       ansible.builtin.copy:
