@@ -9,9 +9,9 @@
     - name: Require encrypted database passwords
       ansible.builtin.assert:
         that:
-          - panel_mysql_root_password is defined
-          - panel_mysql_password is defined
-          - panel_mysql_password | length >= 20
+          - panel_effective_mysql_root_password is defined or panel_mysql_root_password is defined
+          - panel_effective_mysql_password is defined or panel_mysql_password is defined
+          - (panel_effective_mysql_password | default(panel_mysql_password | default(''))) | length >= 20
       no_log: true
     - name: Install MySQL driver and environment
       ansible.builtin.apt:
@@ -44,7 +44,7 @@
                 q.execute("ALTER USER 'olamidepanel'@'localhost' IDENTIFIED BY %s",(v['password'],))
                 q.execute("GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON olamidepanel.* TO 'olamidepanel'@'localhost'")
             c.close()
-        stdin: '{{ {"root_user": panel_mysql_root_user, "root_password": panel_mysql_root_password, "socket": panel_mysql_socket, "password": panel_mysql_password} | to_json }}'
+        stdin: '{{ {"root_user": panel_mysql_root_user, "root_password": panel_effective_mysql_root_password | default(panel_mysql_root_password | default("")), "socket": panel_mysql_socket, "password": panel_effective_mysql_password | default(panel_mysql_password | default(""))} | to_json }}'
       no_log: true
       changed_when: true
       when: not ansible_check_mode
@@ -65,7 +65,7 @@
     - name: Write protected application configuration
       ansible.builtin.copy:
         dest: /etc/olamidepanel/database.json
-        content: '{{ {"unix_socket": panel_mysql_socket, "database": "olamidepanel", "user": "olamidepanel", "password": panel_mysql_password} | to_nice_json }}'
+        content: '{{ {"unix_socket": panel_mysql_socket, "database": "olamidepanel", "user": "olamidepanel", "password": panel_effective_mysql_password | default(panel_mysql_password | default(""))} | to_nice_json }}'
         owner: root
         group: olamidepanel
         mode: '0640'

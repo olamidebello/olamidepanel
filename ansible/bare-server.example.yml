@@ -7,3 +7,6 @@ panel_admin_username: owner
 panel_admin_password: REPLACE_WITH_UNIQUE_PANEL_PASSWORD_14_PLUS
 # Pin a reviewed release tag or commit for repeatable deployment; main tracks current code.
 panel_revision: main
+# Missing, short, or REPLACE_WITH/YOUR_ password placeholders are generated automatically
+# by the bare-server playbook and persisted root-only on the target.
+# Manage panel user passwords in the GUI after the initial login.

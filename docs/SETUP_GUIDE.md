@@ -216,3 +216,23 @@ Reruns retain an already-issued Nginx TLS configuration and reconcile the applic
 An interrupted MySQL install before the managed marker is recorded may be refused on the next run. Inspect the partial install and verify ownership before operator recovery; never remove MySQL data to force a rerun. Repository-key expiration/signature failures must be resolved using current Oracle key information, not by disabling package signature checks. Certificate failure leaves the application installed but HTTPS readiness incomplete; correct DNS/reachability and rerun. Renewal runs through certbot.timer. The HTTPS verification validates the certificate and hostname against the local server.
 
 This automation does not change SSH or firewall rules. Configure provider/host firewall reachability separately. Fresh-host check mode is not a deployment simulation: later tasks depend on files/packages that earlier check-mode tasks do not create.
+
+### Automatic initial passwords and GUI password management
+
+The bare-server playbook now generates missing, short or placeholder database/admin passwords automatically. You only need a valid hostname, real ACME email and panel administrator username. Explicit valid passwords remain supported. Generated values are persisted on the target at `/etc/olamidepanel/bootstrap-credentials.json`, owned by root with mode 0600, and reused on reruns; do not remove this file while using generated MySQL credentials. The sensitive tasks use no_log and separate effective variables so extra-vars placeholders cannot override generated values.
+
+After successful deployment, retrieve only the initial panel login from the server root terminal:
+
+```sh
+python3 - <<'PY'
+import json
+with open('/etc/olamidepanel/bootstrap-credentials.json') as f:
+    credentials=json.load(f)
+print('Username:', credentials['panel_admin_username'])
+print('Initial panel password:', credentials['panel_admin_password'])
+PY
+```
+
+Do not share that output. Sign in and change your own password in Preferences → Password and Security. Use Administration → Access Control → Manage to assign/reset lower-level users' passwords. These GUI features manage panel accounts, not MySQL root or application database credentials. The bootstrap file retains the initial password; it does not track subsequent GUI password changes. Provisioning preserves existing panel passwords, so rerunning deployment does not reset a password changed in the GUI. Store the bootstrap file with encrypted backups and restrict host root access.
+
+This supersedes earlier instructions requiring manual entry of all three passwords for a bare installation. Existing external MySQL installations still require their actual operator credentials; the standalone configure-mysql playbook does not generate unknown existing-server passwords.
