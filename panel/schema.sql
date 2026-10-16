@@ -134,3 +134,12 @@ CREATE TABLE IF NOT EXISTS marketplace_stores (
  contact_email VARCHAR(254) NOT NULL DEFAULT '',
  updated BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS website_controls (
+ domain_id BIGINT NOT NULL PRIMARY KEY,
+ settings TEXT NOT NULL,
+ revision INT NOT NULL DEFAULT 1,
+ applied_revision INT NOT NULL DEFAULT 0,
+ updated BIGINT NOT NULL,
+ FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

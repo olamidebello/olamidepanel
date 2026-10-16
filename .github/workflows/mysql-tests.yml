@@ -19,6 +19,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
+      - name: Install Nginx for actual static-site acceptance tests
+        run: sudo apt-get update && sudo apt-get install -y nginx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Browser form and API wiring checks
+        run: npm install --prefix tests/browser --no-audit --no-fund && npm test --prefix tests/browser
       - name: Configure disposable test database
         run: |
           python - <<'PY'

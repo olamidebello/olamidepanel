@@ -2,7 +2,7 @@
 MODULES=[
  ('Accounts and roles','implemented','Panel accounts, roles, suspension, password changes and audit.'),
  ('Files','partial','Account files, upload/download, bounded ZIP operations, image conversion and 250 MiB app-level quota. No Linux tenancy, permissions editor or trash.'),
- ('Domains','partial','Inventory and DNS-verified static-site publishing worker. Authoritative DNS and application hosting remain unavailable.'),
+ ('Domains','partial','DNS-verified static-site publishing with redirect, directory-index, custom error, hotlink and IP controls. Authoritative DNS and application hosting remain unavailable.'),
  ('Marketplace','implemented','Operator/reseller plans, approval controls and manual order review.'),
  ('Payments','partial','Stripe/Paystack hosted adapters and verification. Merchant testing/credentials required; no refunds or renewals.'),
  ('MySQL','implemented','Internal panel database. Customer database provisioning is not implemented.'),
