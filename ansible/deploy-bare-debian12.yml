@@ -205,7 +205,7 @@
     - name: Verify bootstrap account result with redacted diagnostics
       ansible.builtin.assert:
         that: bootstrap_account.rc == 0
-        fail_msg: '{{ bootstrap_account.stdout | default("Bootstrap wrapper did not return a result") }}'
+        fail_msg: 'Bootstrap result (redacted): {{ bootstrap_account.stdout | default("No result returned") }}'
       when: not ansible_check_mode
     - name: Create initial Nginx virtual host without overwriting issued TLS configuration
       ansible.builtin.copy:
