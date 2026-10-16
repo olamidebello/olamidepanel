@@ -1,0 +1,370 @@
+# Single-file Debian 12 static hosting provisioning.
+# Run on 181.214.149.146 as root:
+# ansible-playbook -i localhost, -c local hosting-all-domains.yml -e acme_email=YOUR_EMAIL
+# DNS is external: apex A=181.214.149.146; optional www CNAME=apex; no AAAA.
+# Existing vhosts and page content are preserved. No full applications are deployed.
+# Automatic retry state: /var/lib/olamide-six-domains/DOMAIN.json
+# Timer: olamide-six-domains.timer. Certbot retries back off up to one day.
+# Backups of this worker's own changed vhosts: /var/lib/olamide-six-domains/backups
+# Operator authorizes these domains explicitly; this does not bypass panel ownership checks.
+# Uninstall scheduling: systemctl disable --now olamide-six-domains.timer
+---
+- name: Provision six operator-owned websites with automatic DNS and HTTPS retries
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    hosting_ipv4: 181.214.149.146
+    hosting_domains:
+    - africanappsstore.space
+    - olamidepanel.com
+    - nekkeddating.com
+    - olamideolatayobello.com
+    - africanbrowser.com
+    - dobhrap.com
+  tasks:
+  - name: Require Debian 12 and an operator ACME email
+    ansible.builtin.assert:
+      that:
+      - ansible_facts.distribution == 'Debian'
+      - ansible_facts.distribution_major_version == '12'
+      - acme_email | default('') is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
+      fail_msg: Use Debian 12 and pass -e acme_email=YOUR_EMAIL.
+  - name: Install static hosting prerequisites
+    ansible.builtin.apt:
+      name:
+      - nginx
+      - certbot
+      - openssl
+      - python3
+      - python3-dnspython
+      state: present
+      update_cache: true
+      cache_valid_time: 3600
+  - name: Validate the existing Nginx configuration before changes
+    ansible.builtin.command: nginx -t
+    changed_when: false
+  - name: Create managed directories
+    ansible.builtin.file:
+      path: '{{ item.path }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '{{ item.mode }}'
+    loop:
+    - path: /var/lib/olamide-six-domains
+      mode: '0755'
+    - path: /var/lib/olamide-six-domains/acme
+      mode: '0755'
+    - path: /var/www/olamide-auto
+      mode: '0755'
+    - path: /etc/letsencrypt/renewal-hooks/deploy
+      mode: '0755'
+  - name: Install root-owned operator domain inventory
+    ansible.builtin.copy:
+      dest: /etc/olamide-six-domains.json
+      owner: root
+      group: root
+      mode: '0600'
+      content: |
+        {{ {"ipv4": hosting_ipv4, "email": acme_email, "domains": hosting_domains} | to_nice_json }}
+  - name: Install automated provisioning worker
+    ansible.builtin.copy:
+      dest: /usr/local/sbin/olamide-six-domains
+      owner: root
+      group: root
+      mode: '0700'
+      content: |
+        #!/usr/bin/python3
+        """Operator-authorized static hosting. Never adopts an existing virtual host."""
+        import fcntl
+        import html
+        import ipaddress
+        import json
+        import os
+        from pathlib import Path
+        import re
+        import subprocess
+        import time
+        import dns.resolver
+        import dns.exception
+
+        BASE = Path('/var/lib/olamide-six-domains')
+        MARK = '# Managed by olamide-six-domains v1\n'
+
+        def run(args, timeout=90):
+            return subprocess.run(args, check=True, capture_output=True, text=True, timeout=timeout).stdout
+
+        def atomic(path, content, mode=0o600):
+            tmp = path.with_name(path.name + '.tmp')
+            tmp.write_text(content)
+            tmp.chmod(mode)
+            tmp.replace(path)
+
+        def names_in(text):
+            text = re.sub(r'#[^\n]*', '', text)
+            return [x.strip('"\'') for value in re.findall(r'\bserver_name\s+([^;]+);', text) for x in value.split()]
+
+        def name_matches(pattern, host):
+            if pattern.startswith('~'):
+                return True  # Regex virtual hosts need operator review, not automatic adoption.
+            if pattern.startswith('.'):
+                return host == pattern[1:] or host.endswith(pattern)
+            if pattern.startswith('*.'):
+                return host.endswith(pattern[1:])
+            if pattern.endswith('.*'):
+                return host.startswith(pattern[:-1])
+            return pattern.lower() == host
+
+        def conflicts(domain, target):
+            dump = run(['nginx', '-T'])
+            chunks = re.split(r'^# configuration file (.+):\s*$', dump, flags=re.M)
+            for i in range(1, len(chunks), 2):
+                path, text = Path(chunks[i].strip()), chunks[i+1]
+                if path.resolve() == target.resolve():
+                    continue
+                for name in names_in(text):
+                    if any(name_matches(name, host) for host in (domain, 'www.' + domain)):
+                        return str(path)
+            return None
+
+        def dns_ready(host, ipv4):
+            # Both resolvers must agree. Any AAAA is refused on this IPv4-only setup.
+            for address in ('1.1.1.1', '8.8.8.8'):
+                resolver = dns.resolver.Resolver(configure=False)
+                resolver.nameservers = [address]
+                resolver.timeout = 3
+                resolver.lifetime = 5
+                try:
+                    a = {str(x) for x in resolver.resolve(host, 'A')}
+                    if a != {ipv4}:
+                        return False
+                    try:
+                        if list(resolver.resolve(host, 'AAAA')):
+                            return False
+                    except dns.resolver.NoAnswer:
+                        pass
+                except dns.exception.DNSException:
+                    return False
+            return True
+
+        def render(domain, root, hosts, tls):
+            names = ' '.join(hosts)
+            acme = 'location ^~ /.well-known/acme-challenge/ { root /var/lib/olamide-six-domains/acme; default_type text/plain; try_files $uri =404; }'
+            static = ('root ' + str(root) + ';\n index index.html;\n'
+                      'add_header X-Content-Type-Options nosniff always;\n'
+                      'location / { try_files $uri $uri/ =404; }\n'
+                      'location ~ /\\. { deny all; }\n')
+            if not tls:
+                return MARK + 'server { listen 80; server_name ' + names + ';\n' + acme + '\n' + static + '}\n'
+            cert = '/etc/letsencrypt/live/' + domain
+            return (MARK + 'server { listen 80; server_name ' + names + ';\n' + acme +
+                    '\nlocation / { return 301 https://' + domain + '$request_uri; }\n}\n' +
+                    'server { listen 443 ssl; server_name ' + names + ';\n' +
+                    'ssl_certificate ' + cert + '/fullchain.pem;\n' +
+                    'ssl_certificate_key ' + cert + '/privkey.pem;\n' +
+                    'ssl_protocols TLSv1.2 TLSv1.3;\n' + static + '}\n')
+
+        def install_vhost(target, content):
+            link = Path('/etc/nginx/sites-enabled') / target.name
+            previous = target.read_text() if target.exists() else None
+            if previous and not previous.startswith(MARK):
+                raise RuntimeError('Unmanaged target configuration; refusing replacement')
+            if link.exists() or link.is_symlink():
+                if not link.is_symlink() or link.resolve() != target.resolve():
+                    raise RuntimeError('Conflicting enabled configuration')
+            if previous == content and link.is_symlink():
+                return
+            if previous:
+                backups = BASE / 'backups'
+                backups.mkdir(exist_ok=True, mode=0o700)
+                atomic(backups / (target.name + '.' + str(time.time_ns())), previous)
+            created_link = not link.is_symlink()
+            atomic(target, content, 0o644)
+            if created_link:
+                link.symlink_to(target)
+            try:
+                run(['nginx', '-t'])
+                run(['systemctl', 'reload', 'nginx'])
+            except Exception:
+                if previous is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    atomic(target, previous, 0o644)
+                if created_link:
+                    link.unlink(missing_ok=True)
+                run(['nginx', '-t'])
+                run(['systemctl', 'reload', 'nginx'])
+                raise
+
+        def provision(config, domain):
+            statefile = BASE / (domain + '.json')
+            state = json.loads(statefile.read_text()) if statefile.exists() else {}
+            result = {'domain': domain, 'checked_at': int(time.time())}
+            target = Path('/etc/nginx/sites-available') / ('olamide-auto-' + domain)
+            try:
+                other = conflicts(domain, target)
+                if other:
+                    result.update(status='existing_site_preserved', configuration=other)
+                else:
+                    root = Path('/var/www/olamide-auto') / domain / 'public_html'
+                    root.mkdir(parents=True, exist_ok=True, mode=0o755)
+                    # Repair only our directory permissions, never recursively modify user files.
+                    for folder in (root.parent.parent, root.parent, root):
+                        folder.chmod(0o755)
+                    index = root / 'index.html'
+                    if not index.exists():
+                        page = ('<!doctype html><html lang="en"><meta charset="utf-8">'
+                                '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                                '<title>' + html.escape(domain) + '</title><body><h1>' +
+                                html.escape(domain) + '</h1><p>Hosting is configured. Website coming soon.</p></body></html>')
+                        atomic(index, page, 0o644)
+                    # Keep an already issued TLS vhost intact while DNS changes propagate.
+                    if not target.exists():
+                        install_vhost(target, render(domain, root, [domain], False))
+                    if not dns_ready(domain, config['ipv4']):
+                        result.update(status='waiting_dns', expected_ipv4=config['ipv4'])
+                    else:
+                        hosts = [domain]
+                        www_ready = dns_ready('www.' + domain, config['ipv4'])
+                        if www_ready:
+                            hosts.append('www.' + domain)
+                        old_hosts = state.get('certificate_hosts', [])
+                        cert = Path('/etc/letsencrypt/live') / domain / 'fullchain.pem'
+                        cert_ok = cert.exists() and subprocess.run(
+                            ['openssl', 'x509', '-checkend', '86400', '-noout', '-in', str(cert)],
+                            capture_output=True).returncode == 0
+                        if not cert_ok or not set(hosts).issubset(old_hosts):
+                            if time.time() < state.get('next_tls_attempt', 0):
+                                result.update(status='waiting_tls_retry', next_tls_attempt=state['next_tls_attempt'])
+                            else:
+                                # Ensure www HTTP challenge routing before requesting its certificate.
+                                served = sorted(set(hosts + old_hosts))
+                                install_vhost(target, render(domain, root, served, cert_ok and bool(old_hosts)))
+                                args = ['certbot', 'certonly', '--webroot', '-w', str(BASE / 'acme'),
+                                        '--cert-name', domain, '--non-interactive', '--agree-tos',
+                                        '--email', config['email'], '--keep-until-expiring', '--expand']
+                                for host in served:
+                                    args += ['-d', host]
+                                try:
+                                    run(args, timeout=240)
+                                except Exception:
+                                    failures = state.get('tls_failures', 0) + 1
+                                    state.update(tls_failures=failures,
+                                                 next_tls_attempt=int(time.time()) + min(86400, 3600 * 2 ** min(failures-1, 5)))
+                                    raise
+                                state.update(certificate_hosts=served, tls_failures=0, next_tls_attempt=0)
+                                install_vhost(target, render(domain, root, served, True))
+                                result.update(status='https_ready', www=('ready' if www_ready else 'waiting_dns'))
+                        else:
+                            install_vhost(target, render(domain, root, sorted(set(hosts + old_hosts)), True))
+                            result.update(status='https_ready', www=('ready' if www_ready else 'waiting_dns'))
+                        result['document_root'] = str(root)
+            except Exception as exc:
+                result.update(status='needs_attention', error=str(exc))
+            state.update(result)
+            atomic(statefile, json.dumps(state, indent=2) + '\n')
+            return result
+
+        def main():
+            config = json.loads(Path('/etc/olamide-six-domains.json').read_text())
+            ipaddress.IPv4Address(config['ipv4'])
+            if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', config['email']):
+                raise ValueError('Invalid ACME email')
+            for domain in config['domains']:
+                if not re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}', domain):
+                    raise ValueError('Invalid domain')
+            with (BASE / 'worker.lock').open('w') as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    print('A provisioning pass is already running')
+                    return
+                print(json.dumps([provision(config, d) for d in config['domains']], indent=2))
+
+        if __name__ == '__main__':
+            main()
+  - name: Validate worker Python syntax
+    ansible.builtin.command: /usr/bin/python3 -m py_compile /usr/local/sbin/olamide-six-domains
+    changed_when: false
+  - name: Install HTTPS renewal validation hook
+    ansible.builtin.copy:
+      dest: /etc/letsencrypt/renewal-hooks/deploy/olamide-six-domains
+      owner: root
+      group: root
+      mode: '0755'
+      content: |
+        #!/bin/sh
+        set -eu
+        /usr/sbin/nginx -t
+        /bin/systemctl reload nginx
+  - name: Install provisioning service
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/olamide-six-domains.service
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=Provision operator-owned domains and HTTPS
+        Wants=network-online.target
+        After=network-online.target nginx.service
+
+        [Service]
+        Type=oneshot
+        User=root
+        UMask=0022
+        ExecStart=/usr/local/sbin/olamide-six-domains
+        TimeoutStartSec=45min
+  - name: Install automatic retry timer
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/olamide-six-domains.timer
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=Retry domain DNS and HTTPS provisioning every five minutes
+
+        [Timer]
+        OnBootSec=2min
+        OnUnitInactiveSec=5min
+        RandomizedDelaySec=30
+        Unit=olamide-six-domains.service
+
+        [Install]
+        WantedBy=timers.target
+  - name: Enable Nginx
+    ansible.builtin.systemd:
+      name: nginx
+      enabled: true
+      state: started
+      daemon_reload: true
+  - name: Run initial provisioning pass
+    ansible.builtin.command: /usr/local/sbin/olamide-six-domains
+    register: hosting_result
+    async: 2400
+    poll: 10
+    changed_when: false
+    when: not ansible_check_mode
+  - name: Enable automatic DNS and certificate retries
+    ansible.builtin.systemd:
+      name: olamide-six-domains.timer
+      enabled: true
+      state: started
+      daemon_reload: true
+  - name: Enable certificate renewal
+    ansible.builtin.systemd:
+      name: certbot.timer
+      enabled: true
+      state: started
+  - name: Display actual provisioning results
+    ansible.builtin.debug:
+      var: hosting_result.stdout_lines
+    when: not ansible_check_mode
+  - name: Display hosting scope and status location
+    ansible.builtin.debug:
+      msg:
+      - Static hosting only. Existing matching virtual hosts are preserved and reported for review.
+      - No registrar/DNS, panel database, payment, mail, PHP or database account changes.
+      - 'Point each apex A record to {{ hosting_ipv4 }}; optional www CNAME to its apex. IPv4-only: no AAAA on these
+        names.'
+      - Upload content as operator to /var/www/olamide-auto/DOMAIN/public_html after a site is created.
+      - 'Status: /var/lib/olamide-six-domains/DOMAIN.json; logs: journalctl -u olamide-six-domains.service'
+      - Removing a domain from the list does not delete its site or data.
