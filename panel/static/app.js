@@ -367,7 +367,7 @@ async function hostingDomainsView(d){
  search.type='search';search.placeholder='Search domains or owners';search.setAttribute('aria-label','Search hosting domains');
  controls.append(search,refresh);d.append(controls);
  const summary=el('p'),notice=el('p'),list=el('div',undefined,'account-list');summary.setAttribute('role','status');d.append(summary,notice,list);
- const labels={https_ready:'HTTPS configured',waiting_dns:'Waiting for DNS',waiting_tls_retry:'Certificate retry scheduled',needs_attention:'Needs attention',existing_site_preserved:'Existing website preserved',inventory_only:'Inventory only'};
+ const labels={https_ready:'HTTPS configured',waiting_dns:'Waiting for DNS',waiting_tls_retry:'Certificate retry scheduled',needs_attention:'Needs attention',existing_site_preserved:'Existing website preserved',inventory_only:'Inventory only',deployed_waiting_dns:'Application deployed · waiting for DNS',deployed_tls_needs_attention:'Application deployed · HTTPS needs attention',waiting_repository:'Waiting for repository'};
  let domains=[];
  const draw=()=>{
   list.replaceChildren();const q=search.value.trim().toLowerCase();const shown=domains.filter(x=>(x.name+' '+x.owner+' '+x.status).toLowerCase().includes(q));
@@ -376,7 +376,12 @@ async function hostingDomainsView(d){
   for(const x of shown){
    const row=el('article',undefined,'account-row'),info=el('div');
    info.append(el('strong',x.name),el('p','Owner: '+x.owner+' · '+x.source),el('span',labels[x.status]||x.status,'badge'));
-   if(x.www)info.append(el('p','www: '+(x.www==='ready'?'HTTPS configured':'Waiting for DNS')));
+   if(x.www)info.append(el('p','www: '+(x.www==='ready'?(x.status==='https_ready'?'HTTPS configured':'DNS ready'):'Waiting for DNS')));
+   if(x.deployment_status)info.append(el('p','Deployment: '+(x.deployment_status==='running'?'Application ready':labels[x.deployment_status]||x.deployment_status)));
+   if(x.backend)info.append(el('p','Backend: '+x.backend));
+   if(x.repo)info.append(el('p','Repository: '+x.repo+(x.commit?' · '+x.commit.slice(0,7):'')));
+   if(x.error)info.append(el('p',x.error));
+   if(x.deployment_checked_at)info.append(el('p','Deployment checked: '+new Date(x.deployment_checked_at*1000).toLocaleString()));
    if(x.document_root)info.append(el('p','Document root: '+x.document_root));
    if(x.configuration)info.append(el('p','Existing configuration: '+x.configuration));
    if(x.checked_at)info.append(el('p','Last checked: '+new Date(x.checked_at*1000).toLocaleString()));
@@ -388,3 +393,4 @@ async function hostingDomainsView(d){
  const load=async()=>{refresh.disabled=true;try{const data=await api('hosting-domains');domains=data.domains;notice.textContent=data.notice||(data.updated_at?'Hosting snapshot: '+new Date(data.updated_at*1000).toLocaleString():'');draw()}finally{refresh.disabled=false}};
  search.oninput=draw;refresh.onclick=guard(load);await load();
 }
+
