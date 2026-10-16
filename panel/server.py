@@ -6,6 +6,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from database import connect, initialize_schema, IntegrityError
 import marketplace
+import payments
+import modules
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -64,6 +66,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
+                if self.path=='/api/modules' and allowed(u,'users.manage'):return self.reply(200,modules.report())
+                if self.path.startswith('/api/payments/'):
+                    status,value=payments.handle('GET',self.path,u)
+                    return self.reply(status,value)
                 if self.path.startswith('/api/marketplace/'):
                     status,value=marketplace.handle('GET',self.path,u)
                     return self.reply(status,value)
@@ -103,7 +109,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length=int(self.headers.get('Content-Length','0'))
             if length > 1100000: return self.reply(413, {'error':'Request too large'})
-            body=json.loads(self.rfile.read(length))
+            raw=self.rfile.read(length)
+            if self.path.startswith('/api/payments/webhook/'):
+                status,value=payments.webhook(self.path,raw,self.headers)
+                return self.reply(status,value)
+            body=json.loads(raw)
             if self.path == '/api/login':
                 # Fixed-cost verification and a bounded per-address attempt window.
                 now=time.time(); key=self.client_address[0]
@@ -127,6 +137,9 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path.startswith('/api/payments/'):
+                status,value=payments.handle('POST',self.path,u,body)
+                return self.reply(status,value)
             if self.path.startswith('/api/marketplace/'):
                 status,value=marketplace.handle('POST',self.path,u,body)
                 return self.reply(status,value)
@@ -181,6 +194,7 @@ class Handler(BaseHTTPRequestHandler):
             else: return self.reply(404,{'error':'Unknown operation'})
             with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],self.path+':'+body.get('action','create')+':target='+str(body.get('id',body.get('username','self'))),int(time.time())))
             self.reply(200,result)
+        except payments.PaymentError as e: self.reply(502,{'error':str(e)})
         except (ValueError, KeyError, OSError, IntegrityError) as e: self.reply(400,{'error':str(e)})
 
 def create_user(username,password,role):

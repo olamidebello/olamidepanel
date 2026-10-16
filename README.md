@@ -143,3 +143,9 @@ Public Terms and Conditions, Privacy Notice and Copyright pages are linked in th
 [Marketplace guide](docs/MARKETPLACE_GUIDE.md): customer/operator dashboards, editable plan catalog, illustrative Starter/Business/Growth templates, published-plan search, confirmed order requests, status tracking, manual approval/rejection and pending cancellation. Plans and orders are stored in MySQL with role/ownership checks, price snapshots and retry idempotency. Payments, customer hosting provisioning, resource enforcement, billing and renewals are not implemented.
 
 Reseller storefronts are supported through super-admin publishing approval, seller-owned catalog editing, seller-scoped order review and hosting/reseller plan categories. See the marketplace guide for sample reseller templates and exact authorization boundaries. These controls do not grant hosting-service provisioning, payment processing or reseller Linux-account delegation.
+
+## Payments and module deployment
+
+[Payments guide](docs/PAYMENTS_GUIDE.md) covers encrypted store-owned gateway administration, Stripe/Paystack hosted checkout adapters, verified payment tracking and manual reconciliation. Other providers are labeled unimplemented; live payment collection defaults off until operator testing and explicit deployment enablement. No refunds/subscription/payout or hosting-provisioning automation is claimed.
+
+`ansible/deploy-available-modules.yml` installs implemented code/prerequisites, runs local tests and reports remaining gaps. Administration → Module Readiness shows the same implementation inventory. It does not manufacture code for absent modules or claim that all cPanel functions are complete.

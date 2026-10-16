@@ -175,6 +175,34 @@
         requirements: /opt/olamidepanel/repo/requirements.txt
         virtualenv: /opt/olamidepanel/venv
       notify: Restart panel
+    - name: Generate persistent gateway encryption key without replacing existing key
+      ansible.builtin.command:
+        argv:
+          - /opt/olamidepanel/venv/bin/python
+          - -c
+          - |
+            import os
+            from cryptography.fernet import Fernet
+            fd=os.open('/etc/olamidepanel/payment.key',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'wb') as f: f.write(Fernet.generate_key())
+        creates: /etc/olamidepanel/payment.key
+      no_log: true
+    - name: Protect gateway encryption key
+      ansible.builtin.file:
+        path: /etc/olamidepanel/payment.key
+        owner: root
+        group: olamidepanel
+        mode: '0640'
+    - name: Configure public HTTPS origin
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/runtime.env
+        content: |
+          PANEL_PUBLIC_URL=https://{{ panel_hostname }}
+          PANEL_ENABLE_LIVE_PAYMENTS={{ (panel_enable_live_payments | default(false) | bool) | ternary('1','0') }}
+        owner: root
+        group: olamidepanel
+        mode: '0640'
+      notify: Restart panel
     - name: Create private account storage
       ansible.builtin.file:
         path: /var/lib/olamidepanel

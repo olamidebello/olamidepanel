@@ -145,3 +145,20 @@ class PanelTest(unittest.TestCase):
         marketplace.handle('POST','/api/marketplace/vendors/save',admin,{'id':users['sellerone']['id'],'enabled':True})
         _,approved=marketplace.handle('POST','/api/marketplace/orders/action',users['sellerone'],{'id':order['id'],'action':'approve'})
         self.assertEqual(approved['status'],'approved')
+    def test_gateway_credentials_encrypted_and_scoped(self):
+        import payments
+        from cryptography.fernet import Fernet
+        from unittest.mock import patch
+        with self.p.db() as con:uid=con.execute("SELECT id FROM users WHERE username='other'").fetchone()['id']
+        secret='sk_test_disposable_private_key'
+        path=Path(self.tmp.name)/'payment.key';path.write_bytes(Fernet.generate_key())
+        with patch.dict(os.environ,{'PANEL_PAYMENT_KEY':str(path)}):
+            status,result=payments.handle('POST','/api/payments/gateways/save',{'id':999,'role':'root','username':'operator'},{'owner_id':0,'provider':'stripe','label':'Test merchant','mode':'test','enabled':True,'secret':secret,'webhook_secret':'whsec_example'})
+            self.assertEqual(status,200)
+            with self.p.db() as con:
+                row=con.execute('SELECT * FROM payment_gateways WHERE id=?',(result['id'],)).fetchone()
+                self.assertNotIn(secret,row['credentials'])
+            self.assertEqual(payments.decrypt(row)['secret'],secret)
+            _,listed=payments.handle('GET','/api/payments/gateways',{'role':'root'})
+            self.assertNotIn(secret,json.dumps(listed))
+            self.assertEqual(payments.handle('GET','/api/payments/gateways',{'id':uid,'role':'user'})[0],403)

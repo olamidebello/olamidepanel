@@ -1,0 +1,24 @@
+"""Honest implementation inventory, independent of service installation status."""
+MODULES=[
+ ('Accounts and roles','implemented','Panel accounts, roles, suspension, password changes and audit.'),
+ ('Files','partial','Text files/folders, rename/copy/delete. No upload/download/archives/quotas.'),
+ ('Domains','partial','Inventory only. No virtual-host or DNS provisioning.'),
+ ('Marketplace','implemented','Operator/reseller plans, approval controls and manual order review.'),
+ ('Payments','partial','Stripe/Paystack hosted adapters and verification. Merchant testing/credentials required; no refunds or renewals.'),
+ ('MySQL','implemented','Internal panel database. Customer database provisioning is not implemented.'),
+ ('TLS and installation','partial','Panel HTTPS/Nginx and Debian deployment. Customer-domain certificates not implemented.'),
+ ('Mail hosting','not implemented','Mailbox, routing, spam filtering, webmail and mail DNS adapters required.'),
+ ('DNS hosting','not implemented','Authoritative zones, DNSSEC and provider integration required.'),
+ ('Customer databases','not implemented','Tenant database/user provisioning and privileges required.'),
+ ('Backups and restore','not implemented','Consistent scheduled backups and tested recovery adapters required.'),
+ ('FTP and WebDAV','not implemented','Isolated file-transfer accounts/services required.'),
+ ('Applications and Git','not implemented','Runtime isolation, build workers and deployment adapters required.'),
+ ('Terminal and cron','not implemented','Privileged broker, tenant isolation and authorization required.'),
+ ('Security extensions','not implemented','MFA, WAF, malware scanning, firewall controls and provider integrations required.'),
+ ('Resource quotas and resellers','partial','Panel/store roles exist. Linux tenancy, quota enforcement and delegated hosting accounts do not.'),
+ ('Third-party products','not implemented','Provider software, licensing and tested adapters must be supplied separately.')
+]
+def report():return {'notice':'This is an implementation inventory, not a claim that every hosting module is complete or service is operational. Ansible deploys existing code; it cannot implement absent adapters.', 'modules':[{'name':n,'status':s,'detail':d} for n,s,d in MODULES]}
+if __name__=='__main__':
+ import json
+ print(json.dumps(report(),indent=2))

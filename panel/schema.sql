@@ -75,3 +75,35 @@ CREATE TABLE IF NOT EXISTS hosting_orders (
  CONSTRAINT order_owner FOREIGN KEY (owner) REFERENCES users(id) ON DELETE CASCADE,
  CONSTRAINT order_plan FOREIGN KEY (plan_id) REFERENCES hosting_plans(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS payment_gateways (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ owner_id BIGINT NOT NULL,
+ provider VARCHAR(32) NOT NULL,
+ label VARCHAR(80) NOT NULL,
+ mode VARCHAR(8) NOT NULL,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE,
+ credentials TEXT NOT NULL,
+ updated BIGINT NOT NULL,
+ INDEX gateway_owner (owner_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS payment_transactions (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ order_id BIGINT NOT NULL UNIQUE,
+ buyer_id BIGINT NOT NULL,
+ seller_id BIGINT NOT NULL,
+ gateway_id BIGINT NOT NULL,
+ provider VARCHAR(32) NOT NULL,
+ mode VARCHAR(8) NOT NULL,
+ amount_cents BIGINT NOT NULL,
+ currency CHAR(3) NOT NULL,
+ state VARCHAR(24) NOT NULL,
+ token VARCHAR(40) NOT NULL UNIQUE,
+ provider_reference VARCHAR(200),
+ checkout_url TEXT,
+ created BIGINT NOT NULL,
+ verified_at BIGINT,
+ INDEX payment_buyer (buyer_id),
+ INDEX payment_seller (seller_id),
+ UNIQUE KEY payment_reference (gateway_id,provider_reference),
+ CONSTRAINT payment_gateway FOREIGN KEY (gateway_id) REFERENCES payment_gateways(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

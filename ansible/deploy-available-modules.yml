@@ -1,0 +1,32 @@
+---
+- name: Deploy implemented modules and prerequisites
+  ansible.builtin.import_playbook: deploy-bare-debian12.yml
+
+- name: Validate installed code and report module gaps
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Compile installed Python modules
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -m, compileall, -q, /opt/olamidepanel/panel]
+      changed_when: false
+    - name: Run non-production local unit tests
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -m, unittest, discover, -s, tests, -v]
+        chdir: /opt/olamidepanel/repo
+      environment:
+        PANEL_TEST_MYSQL: ''
+      changed_when: false
+    - name: Obtain implementation inventory
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/panel/modules.py]
+      register: module_report
+      changed_when: false
+    - name: Show module implementation gaps
+      ansible.builtin.debug:
+        msg: '{{ module_report.stdout | from_json }}'
+    - name: Optionally require complete implementation coverage
+      ansible.builtin.assert:
+        that: (module_report.stdout | from_json).modules | rejectattr('status','equalto','implemented') | list | length == 0
+        fail_msg: Some modules remain partial or unimplemented. Deployment cannot generate absent implementation.
+      when: panel_require_all_modules | default(false) | bool

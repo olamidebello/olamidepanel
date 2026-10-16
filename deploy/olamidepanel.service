@@ -5,6 +5,7 @@ After=network.target
 User=olamidepanel
 Group=olamidepanel
 ExecStart=/opt/olamidepanel/venv/bin/python /opt/olamidepanel/panel/server.py
+EnvironmentFile=-/etc/olamidepanel/runtime.env
 Environment=PANEL_DB_CONFIG=/etc/olamidepanel/database.json
 Environment=PANEL_DATA=/var/lib/olamidepanel
 Environment=PANEL_SECURE_COOKIE=1
