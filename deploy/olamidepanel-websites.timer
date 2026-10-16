@@ -1,0 +1,8 @@
+[Unit]
+Description=Process OlamidePanel static website requests
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+Unit=olamidepanel-websites.service
+[Install]
+WantedBy=timers.target

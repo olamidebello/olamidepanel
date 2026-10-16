@@ -1,0 +1,28 @@
+---
+- name: Deploy panel prerequisites and current application
+  ansible.builtin.import_playbook: deploy-bare-debian12.yml
+
+- name: Enable DNS-verified static website provisioning
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Store root-only website worker settings
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/provisioning.json
+        content: '{{ {"public_ipv4": panel_public_ipv4 | default(ansible_default_ipv4.address), "panel_hostname": panel_hostname, "acme_email": panel_acme_email} | to_nice_json }}'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Install website worker service and timer
+      ansible.builtin.copy:
+        src: '/opt/olamidepanel/repo/deploy/{{ item }}'
+        dest: '/etc/systemd/system/{{ item }}'
+        remote_src: true
+        mode: '0644'
+      loop: [olamidepanel-websites.service, olamidepanel-websites.timer]
+    - name: Start website provisioning timer
+      ansible.builtin.systemd:
+        name: olamidepanel-websites.timer
+        enabled: true
+        state: started
+        daemon_reload: true

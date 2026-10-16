@@ -8,6 +8,7 @@ from database import connect, initialize_schema, IntegrityError
 import marketplace
 import payments
 import modules
+import websites
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -66,6 +67,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
+                if self.path=='/api/websites':
+                    status,value=websites.handle('GET',self.path,u)
+                    return self.reply(status,value)
                 if self.path=='/api/modules' and allowed(u,'users.manage'):return self.reply(200,modules.report())
                 if self.path.startswith('/api/payments/'):
                     status,value=payments.handle('GET',self.path,u)
@@ -137,6 +141,9 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/websites':
+                status,value=websites.handle('POST',self.path,u,body)
+                return self.reply(status,value)
             if self.path.startswith('/api/payments/'):
                 status,value=payments.handle('POST',self.path,u,body)
                 return self.reply(status,value)
@@ -152,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 name=body['name'].lower().rstrip('.')
                 if len(name)>253 or not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',name): raise ValueError('Enter a valid domain name')
                 with db() as con: con.execute('INSERT INTO domains(owner,name,created) VALUES(?,?,?)',(u['id'],name,int(time.time())))
-                result={'ok':True,'status':'Recorded; web-server and DNS provisioning not implemented'}
+                result={'ok':True,'status':'Domain saved. Open Site Publisher for DNS-verified static website publishing.'}
             elif self.path == '/api/files':
                 if not allowed(u, 'files.write'): return self.reply(403, {'error':'Read-only access'})
                 path=safe_path(u['id'],body['path'])

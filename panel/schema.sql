@@ -107,3 +107,13 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
  UNIQUE KEY payment_reference (gateway_id,provider_reference),
  CONSTRAINT payment_gateway FOREIGN KEY (gateway_id) REFERENCES payment_gateways(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS website_requests (
+ domain_id BIGINT NOT NULL PRIMARY KEY,
+ token VARCHAR(64) NOT NULL,
+ state VARCHAR(24) NOT NULL,
+ message VARCHAR(500) NOT NULL,
+ title VARCHAR(100) NOT NULL,
+ tagline VARCHAR(500) NOT NULL,
+ updated BIGINT NOT NULL,
+ CONSTRAINT website_domain FOREIGN KEY (domain_id) REFERENCES domains(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

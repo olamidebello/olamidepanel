@@ -149,3 +149,7 @@ Reseller storefronts are supported through super-admin publishing approval, sell
 [Payments guide](docs/PAYMENTS_GUIDE.md) covers encrypted store-owned gateway administration, Stripe/Paystack hosted checkout adapters, verified payment tracking and manual reconciliation. Other providers are labeled unimplemented; live payment collection defaults off until operator testing and explicit deployment enablement. No refunds/subscription/payout or hosting-provisioning automation is claimed.
 
 `ansible/deploy-available-modules.yml` installs implemented code/prerequisites, runs local tests and reports remaining gaps. Administration → Module Readiness shows the same implementation inventory. It does not manufacture code for absent modules or claim that all cPanel functions are complete.
+
+## Static domain publishing
+
+[Static websites guide](docs/STATIC_WEBSITES.md) describes the DNS-verified title/tagline publisher and separate Nginx/Certbot worker. Install it with `ansible/enable-static-websites.yml`. Domain inventory alone still does not publish a site; ownership TXT proof and a publishing request are required. Authoritative DNS, application hosting, website file uploads and a full builder remain unfinished.

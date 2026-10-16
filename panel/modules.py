@@ -2,11 +2,11 @@
 MODULES=[
  ('Accounts and roles','implemented','Panel accounts, roles, suspension, password changes and audit.'),
  ('Files','partial','Text files/folders, rename/copy/delete. No upload/download/archives/quotas.'),
- ('Domains','partial','Inventory only. No virtual-host or DNS provisioning.'),
+ ('Domains','partial','Inventory and DNS-verified static-site publishing worker. Authoritative DNS and application hosting remain unavailable.'),
  ('Marketplace','implemented','Operator/reseller plans, approval controls and manual order review.'),
  ('Payments','partial','Stripe/Paystack hosted adapters and verification. Merchant testing/credentials required; no refunds or renewals.'),
  ('MySQL','implemented','Internal panel database. Customer database provisioning is not implemented.'),
- ('TLS and installation','partial','Panel HTTPS/Nginx and Debian deployment. Customer-domain certificates not implemented.'),
+ ('TLS and installation','partial','Panel HTTPS/Nginx deployment and static-site TLS worker. Other customer hosting runtimes remain unavailable.'),
  ('Mail hosting','not implemented','Mailbox, routing, spam filtering, webmail and mail DNS adapters required.'),
  ('DNS hosting','not implemented','Authoritative zones, DNSSEC and provider integration required.'),
  ('Customer databases','not implemented','Tenant database/user provisioning and privileges required.'),
