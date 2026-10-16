@@ -173,26 +173,33 @@
         \ '--heads', url, 'refs/heads/' + branch], timeout=90)\n    except subprocess.CalledProcessError:\n    \
         \    # Missing/private/inaccessible source remains untouched and is retried later.\n        return None\n\
         \    if not refs:\n        return None\n    sha = refs.split()[0]\n    root = BASE / 'sources' / site['domain']\n\
-        \    if not root.exists():\n        run(['git', 'clone', '--no-checkout', url, str(root)], timeout=600)\n\
-        \    if run(['git', 'remote', 'get-url', 'origin'], cwd=root) != url:\n        raise RuntimeError('Unexpected\
-        \ Git origin; refusing to change checkout')\n    if run(['git', 'status', '--porcelain'], cwd=root):\n \
-        \       raise RuntimeError('Source checkout has local changes; refusing to overwrite')\n    run(['git',\
-        \ 'fetch', 'origin', 'refs/heads/' + branch], cwd=root, timeout=600)\n    sha = run(['git', 'rev-parse',\
-        \ 'FETCH_HEAD'], cwd=root)\n    run(['git', 'checkout', '--detach', sha], cwd=root)\n    return root, sha\n\
-        \ndef export(root, sha, dest):\n    dest.mkdir(parents=True, exist_ok=True, mode=0o755)\n    with tempfile.TemporaryFile()\
-        \ as archive:\n        subprocess.run(['git', 'archive', sha], cwd=root, stdout=archive, check=True)\n \
-        \       archive.seek(0)\n        with tarfile.open(fileobj=archive) as tf:\n            # Repositories are\
-        \ executable trusted source, but links must not escape releases.\n            for member in tf.getmembers():\n\
-        \                if member.issym() or member.islnk() or member.name.startswith('/') or '..' in Path(member.name).parts:\n\
-        \                    raise RuntimeError('Unsafe archive member')\n            tf.extractall(dest)\n    for\
-        \ path in [dest, *dest.rglob('*')]:\n        path.chmod(0o755 if path.is_dir() or path.stat().st_mode &\
-        \ 0o111 else 0o644)\n\ndef switch(link, target):\n    link = Path(link)\n    if link.exists() and not link.is_symlink():\n\
-        \        raise RuntimeError('Refusing to replace non-symlink deployment path: ' + str(link))\n    tmp =\
-        \ link.with_name(link.name + '.next')\n    tmp.unlink(missing_ok=True)\n    tmp.symlink_to(target)\n   \
-        \ tmp.replace(link)\n\ndef health(port, route='/'):\n    for attempt in range(15):\n        try:\n     \
-        \       with urllib.request.urlopen('http://127.0.0.1:' + str(port) + route, timeout=3) as response:\n \
-        \               if response.status == 200:\n                    return\n        except Exception:\n    \
-        \        pass\n        time.sleep(1)\n    raise RuntimeError('Backend readiness failed on port ' + str(port))\n\
+        \    if root.exists():\n        if run(['git', 'remote', 'get-url', 'origin'], cwd=root) != url:\n     \
+        \       raise RuntimeError('Unexpected Git origin; refusing to change checkout')\n        # v1 cloned with\
+        \ --no-checkout. Preserve that incomplete repository and\n        # replace it only when the worktree contains\
+        \ absolutely nothing but .git.\n        if {p.name for p in root.iterdir()} == {'.git'}:\n            saved\
+        \ = BASE / 'backups' / site['domain'] / ('incomplete-checkout-' + str(time.time_ns()))\n            saved.parent.mkdir(parents=True,\
+        \ exist_ok=True, mode=0o700)\n            root.rename(saved)\n    if not root.exists():\n        root.parent.mkdir(parents=True,\
+        \ exist_ok=True)\n        with tempfile.TemporaryDirectory(prefix='.clone-', dir=root.parent) as staging:\n\
+        \            staged = Path(staging) / 'repository'\n            # Materialize the index and worktree before\
+        \ checking for local edits.\n            run(['git', 'clone', '--branch', branch, '--single-branch', url,\
+        \ str(staged)], timeout=600)\n            staged.rename(root)\n    if run(['git', 'status', '--porcelain'],\
+        \ cwd=root):\n        raise RuntimeError('Source checkout has local changes; refusing to overwrite')\n \
+        \   run(['git', 'fetch', 'origin', 'refs/heads/' + branch], cwd=root, timeout=600)\n    sha = run(['git',\
+        \ 'rev-parse', 'FETCH_HEAD'], cwd=root)\n    run(['git', 'checkout', '--detach', sha], cwd=root)\n    return\
+        \ root, sha\n\ndef export(root, sha, dest):\n    dest.mkdir(parents=True, exist_ok=True, mode=0o755)\n \
+        \   with tempfile.TemporaryFile() as archive:\n        subprocess.run(['git', 'archive', sha], cwd=root,\
+        \ stdout=archive, check=True)\n        archive.seek(0)\n        with tarfile.open(fileobj=archive) as tf:\n\
+        \            # Repositories are executable trusted source, but links must not escape releases.\n       \
+        \     for member in tf.getmembers():\n                if member.issym() or member.islnk() or member.name.startswith('/')\
+        \ or '..' in Path(member.name).parts:\n                    raise RuntimeError('Unsafe archive member')\n\
+        \            tf.extractall(dest)\n    for path in [dest, *dest.rglob('*')]:\n        path.chmod(0o755 if\
+        \ path.is_dir() or path.stat().st_mode & 0o111 else 0o644)\n\ndef switch(link, target):\n    link = Path(link)\n\
+        \    if link.exists() and not link.is_symlink():\n        raise RuntimeError('Refusing to replace non-symlink\
+        \ deployment path: ' + str(link))\n    tmp = link.with_name(link.name + '.next')\n    tmp.unlink(missing_ok=True)\n\
+        \    tmp.symlink_to(target)\n    tmp.replace(link)\n\ndef health(port, route='/'):\n    for attempt in range(15):\n\
+        \        try:\n            with urllib.request.urlopen('http://127.0.0.1:' + str(port) + route, timeout=3)\
+        \ as response:\n                if response.status == 200:\n                    return\n        except Exception:\n\
+        \            pass\n        time.sleep(1)\n    raise RuntimeError('Backend readiness failed on port ' + str(port))\n\
         \ndef service_exists(name):\n    return run(['systemctl', 'show', name, '--property=LoadState', '--value'])\
         \ != 'not-found'\n\ndef backup_sqlite(data, backup):\n    if not data.exists():\n        return\n    backup.mkdir(parents=True,\
         \ exist_ok=True, mode=0o700)\n    for p in data.rglob('*'):\n        if p.is_symlink():\n            raise\
