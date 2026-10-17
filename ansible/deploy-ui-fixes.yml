@@ -1,0 +1,42 @@
+---
+- name: Apply tested navigation and module inventory fixes
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    panel_install: /opt/olamidepanel
+  tasks:
+    - name: Check existing installation
+      ansible.builtin.stat:
+        path: '{{ panel_install }}/panel/server.py'
+      register: panel_server
+    - name: Require an existing installation
+      ansible.builtin.assert:
+        that: panel_server.stat.exists
+        fail_msg: Install OlamidePanel before applying this update.
+    - name: Deploy frontend and complete module inventory with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '{{ panel_install }}/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [static/app.js, module-audit.json]
+      notify: Restart panel
+    - name: Apply restart
+      ansible.builtin.meta: flush_handlers
+    - name: Verify panel responds
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/
+        status_code: 200
+      register: panel_health
+      until: panel_health.status | default(0) == 200
+      retries: 10
+      delay: 2
+      when: not ansible_check_mode
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted

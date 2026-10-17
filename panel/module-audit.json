@@ -1406,5 +1406,13 @@
     "source": "panel/static/app.js (planned card only)",
     "api": "None",
     "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+  },
+  {
+    "category": "Administration",
+    "name": "Hosting Domains",
+    "status": "implemented",
+    "source": "panel/hosted_domains.py; panel/static/app.js",
+    "api": "/api/hosting-domains",
+    "detail": "Read-only combined inventory of panel domains and operator-managed hosting, with search, deployment details and status refresh. Does not provision hosting or transfer ownership."
   }
 ]

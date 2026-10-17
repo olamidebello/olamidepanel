@@ -9,6 +9,8 @@ let toolFilter='available';
 let favorites;
 try { favorites=JSON.parse(localStorage.getItem('olamide-favorites')||'[]'); if(!Array.isArray(favorites))favorites=[]; } catch { favorites=[]; }
 const navIcons={Marketplace:'▧',Overview:'◈',Files:'▤',Domains:'◎',Email:'✉',Databases:'▥',Security:'♧',Software:'⌘',Metrics:'▥',Advanced:'⌁',Preferences:'⚙',Administration:'▦',Integrations:'◇'};
+// Each navigation owns a separate node, so late API responses cannot alter another screen.
+function resetDetail(){const previous=$('detail'),next=previous.cloneNode(false);previous.replaceWith(next);return next}
 function render(){
  let nav=$('nav');nav.replaceChildren();
  for(const name of ['Overview',...Object.keys(groups)].filter(n=>me?.permissions?.includes('users.manage')||n!=='Administration')){
@@ -18,7 +20,7 @@ function render(){
  }
  $('heading').textContent=category==='Overview'?'Hosting overview':category;$('crumb').textContent=category;
  $('sectionTitle').textContent=category==='Overview'?'Your hosting tools':category+' tools';
- $('detail').hidden=true;$('tools').replaceChildren();let count=0;
+ resetDetail().hidden=true;$('tools').replaceChildren();let count=0;
  let entries=Object.entries(groups).filter(([g])=>(category==='Overview'||g===category)&&(me?.permissions?.includes('users.manage')||g!=='Administration'));
  for(const[g,names]of entries)for(const name of names){
   if(g==='Marketplace'&&!marketplaceMenu.some(item=>item.name===name))continue;
@@ -29,7 +31,7 @@ function render(){
   if(!(name+' '+g).toLowerCase().includes($('search').value.toLowerCase()) || toolFilter==='available'&&!available || toolFilter==='favorites'&&!favorites.includes(name))continue;
   count++;let card=el('article',undefined,'card'),b=el('button',undefined,'tool-open');
   b.append(el('span',navIcons[g]||'◇','icon'),el('h3',name),el('p',g+' / '+(available?'Manage workspace':'Coming to your workspace')),el('span',available?name==='Domains'?'Inventory only':'Available':'Planned',available?'badge':'badge pending'));
-  b.onclick=guard(()=>available?open(name):moduleStatusView(name));
+  b.onclick=guard(()=>open(name));
   let star=el('button',favorites.includes(name)?'★':'☆','favorite');star.setAttribute('aria-label',(favorites.includes(name)?'Unpin ':'Pin ')+name);star.setAttribute('aria-pressed',String(favorites.includes(name)));
   star.onclick=()=>{favorites=favorites.includes(name)?favorites.filter(n=>n!==name):[...favorites,name];try{localStorage.setItem('olamide-favorites',JSON.stringify(favorites))}catch{}render()};
   card.append(b,star);$('tools').append(card);
@@ -38,7 +40,7 @@ function render(){
  if(!count)$('tools').append(el('div',toolFilter==='favorites'?'Star a tool to make it a favorite.':'No tools match. Try another search or category.','empty-state'));
  document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.filter===toolFilter);b.setAttribute('aria-pressed',String(b.dataset.filter===toolFilter))});
 }
-async function openBase(name){let d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){await moduleStatusView(name);return}
+async function openBase(name,d=$('detail')){d.replaceChildren(el('h2',name));d.hidden=false;d.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});d.focus({preventScroll:true});if(!implemented.includes(name)){await moduleStatusView(name);return}
 if(name==='Access Control'){
  d.append(el('p','Manage panel roles and suspend or restore lower-level accounts. Panel root controls OlamidePanel permissions; Linux root privileges are not granted.'));
  const [roles,users]=await Promise.all([api('roles'),api('users')]);
@@ -46,7 +48,7 @@ if(name==='Access Control'){
  for(const [label,value]of [['Accounts',users.length],['Active',users.filter(x=>x.active).length],['Suspended',users.filter(x=>!x.active).length]]){let card=el('div',undefined,'metric');card.append(el('small',label),el('strong',String(value)));summary.append(card)}d.append(summary);
  const list=el('div',undefined,'account-list');d.append(list);
  const search=el('input');search.type='search';search.placeholder='Filter accounts by username or role';search.setAttribute('aria-label','Filter accounts');d.insertBefore(search,list);
- const renderUsers=()=>{list.replaceChildren();for(const user of users.filter(u=>(u.username+' '+u.role).includes(search.value.toLowerCase()))){
+ const renderUsers=()=>{list.replaceChildren();for(const user of users.filter(u=>(u.username+' '+u.role).toLowerCase().includes(search.value.toLowerCase()))){
   const row=el('div',undefined,'account-row');const info=el('div');info.append(el('strong',user.username),el('p',user.role+' · '+(user.active?'Active':'Suspended')));row.append(info);
   const level=roles.find(r=>r.role===me.role)?.level||0;const targetLevel=roles.find(r=>r.role===user.role)?.level??100;
   if(user.id!==me.id&&targetLevel<level){
@@ -99,7 +101,7 @@ async function open(name){
  if(groups.Marketplace.includes(name)&&!marketplaceMenu.some(item=>item.name===name))throw Error('This marketplace menu is unavailable for your account');
  if(location.hash!=='#tool='+encodeURIComponent(name))history.pushState(null,'','#tool='+encodeURIComponent(name));
  if(groups.Marketplace.includes(name)){category='Marketplace';render()}
- await openBase(name);const d=$('detail');
+ const d=resetDetail();await openBase(name,d);if(!d.isConnected)return;
  if(['Redirects','Indexes','Error Pages','Hotlink Protection','IP Blocker'].includes(name)){await siteControlsView(name,d);return;}
  if(name==='Track DNS'){await dnsView(d);return;}
  if(name==='Two-Factor Authentication'){await mfaView(d);return;}
@@ -308,21 +310,21 @@ window.addEventListener('popstate',()=>{if(me)guard(restoreNavigation)()});
 
 async function accountToolsView(name){
  category='Administration';render();if(location.hash!=='#tool='+encodeURIComponent(name))history.pushState(null,'','#tool='+encodeURIComponent(name));
- const d=$('detail');d.replaceChildren(el('h2',name),el('p','Manage OlamidePanel accounts. Linux hosting accounts and their resources require separate provisioning.'));d.hidden=false;
+ const d=resetDetail();d.replaceChildren(el('h2',name),el('p','Manage OlamidePanel accounts. Linux hosting accounts and their resources require separate provisioning.'));d.hidden=false;
  const roles=await api('roles'),users=await api('users');const level=roles.find(r=>r.role===me.role)?.level||0;
  const search=el('input');search.type='search';search.placeholder='Search panel accounts';search.setAttribute('aria-label','Search panel accounts');const list=el('div');d.append(search,list);
  const draw=()=>{list.replaceChildren();for(const user of users.filter(u=>(name!=='Suspended Accounts'||!u.active)&&(name!=='Account Termination'||!u.active)&&(name!=='Resellers'||u.role==='reseller')&&(u.username+' '+u.role).toLowerCase().includes(search.value.toLowerCase()))){const row=el('article',undefined,'account-row');row.append(el('strong',user.username),el('p',user.role+' · '+(user.active?'Active':'Suspended')));const target=roles.find(r=>r.role===user.role)?.level??100;
- if(user.id!==me.id&&target<level){const manage=el('button','Manage account');manage.onclick=guard(()=>accountEditor(user));const suspend=el('button',user.active?'Suspend':'Restore');suspend.onclick=guard(async()=>{await api('users/update',{id:user.id,role:user.role,active:!user.active});await accountToolsView(name)});row.append(manage,suspend)}else row.append(el('span','Protected account','badge'));list.append(row)}if(!list.children.length)list.append(el('p','No matching accounts.'))};search.oninput=draw;draw();const add=el('button','Create panel user');add.onclick=guard(()=>open('Create Panel User'));d.append(add);d.scrollIntoView({behavior:'smooth'});d.focus();
+ if(user.id!==me.id&&target<level){const manage=el('button','Manage account');manage.onclick=guard(()=>accountEditor(user));const suspend=el('button',user.active?'Suspend':'Restore');suspend.onclick=guard(async()=>{await api('users/update',{id:user.id,role:user.role,active:!user.active});await accountToolsView(name)});row.append(manage,suspend)}else row.append(el('span','Protected account','badge'));list.append(row)}if(!list.children.length)list.append(el('p','No matching accounts.'))};search.oninput=draw;draw();const add=el('button','Create panel user');add.onclick=guard(()=>open('Create Panel User'));d.append(add);if(d.isConnected){d.scrollIntoView({behavior:'smooth'});d.focus();}
 }
 async function dnsView(d){
  d.append(el('p','Look up public DNS records. This tool reads DNS; it does not create or edit zones.'));
  const result=el('pre');result.setAttribute('aria-live','polite');const f=form([['name','text']],async b=>{result.textContent='Looking up DNS…';try{result.textContent=JSON.stringify(await api('dns/lookup',{...b,type:f.elements.record_type.value}),null,2)}catch(e){result.textContent=e.message}});const select=el('select');select.name='record_type';select.setAttribute('aria-label','DNS record type');for(const type of ['A','AAAA','CNAME','MX','NS','TXT','SOA','CAA']){const option=el('option',type);option.value=type;select.append(option)}f.insertBefore(select,f.lastElementChild);f.lastElementChild.textContent='Look up records';d.append(f,result);
 }
 async function moduleStatusView(name){
- const d=$('detail');d.replaceChildren(el('h2',name));d.hidden=false;
+ const d=resetDetail();d.replaceChildren(el('h2',name));d.hidden=false;
  d.append(el('p','This tool is not available yet. It requires additional backend implementation; installing packages alone will not enable it.'));
  if(me.permissions.includes('users.manage')){const report=await api('modules');const tool=report.tools.find(t=>t.name===name);if(tool)d.append(el('p',tool.detail));const readiness=el('button','View module readiness');readiness.onclick=guard(()=>open('Module Readiness'));d.append(readiness)}
- const available=el('button','Browse working tools');available.onclick=()=>{toolFilter='available';category='Overview';render()};d.append(available);d.scrollIntoView({behavior:'smooth'});
+ const available=el('button','Browse working tools');available.onclick=()=>{toolFilter='available';category='Overview';render()};d.append(available);if(d.isConnected)d.scrollIntoView({behavior:'smooth'});
 }
 
 async function siteControlsView(name,d){
