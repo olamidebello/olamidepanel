@@ -28,7 +28,7 @@ class HostingDomainTests(unittest.TestCase):
                 {'domain': 'dobhrap.com', 'status': 'waiting_dns'},
                 {'domain': 'africanbrowser.com', 'status': 'https_ready'},
                 {'domain': '<script>', 'status': 'https_ready'}]}))
-            result = module.report({'role': 'super_admin'}, Connection, path)
+            result = module.report({'role': 'super_admin'}, Connection, path, operator_domains=())
         rows = {x['name']: x for x in result['domains']}
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows['dobhrap.com']['owner'], 'owner')
@@ -38,8 +38,27 @@ class HostingDomainTests(unittest.TestCase):
 
     def test_missing_snapshot_does_not_claim_sites_are_published(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = module.report({'role': 'root'}, Connection, Path(directory) / 'missing')
+            result = module.report({'role': 'root'}, Connection, Path(directory) / 'missing', operator_domains=())
         self.assertTrue(result['notice'])
         self.assertTrue(all(x['status'] == 'inventory_only' for x in result['domains']))
+
+    def test_operator_domains_visible_without_claiming_deployment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = module.report({'role': 'root'}, Connection, Path(directory) / 'missing')
+        rows = {x['name']: x for x in result['domains']}
+        self.assertIn('aicourtsystem.com', rows)
+        self.assertEqual(rows['aicourtsystem.com']['status'], 'verification_pending')
+        self.assertEqual(rows['dobhrap.com']['owner'], 'owner')
+        self.assertEqual(rows['dobhrap.com']['status'], 'inventory_only')
+
+    def test_snapshot_overrides_pending_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+            path.write_text(json.dumps({'updated_at': 123, 'domains': [
+                {'domain': 'aicourtsystem.com', 'status': 'waiting_dns'}]}))
+            result = module.report({'role': 'root'}, Connection, path)
+        row = next(x for x in result['domains'] if x['name'] == 'aicourtsystem.com')
+        self.assertEqual(row['status'], 'waiting_dns')
+        self.assertEqual(row['source'], 'Server hosting automation')
 
 if __name__ == '__main__': unittest.main()
