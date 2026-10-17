@@ -369,7 +369,7 @@ async function hostingDomainsView(d){
  search.type='search';search.placeholder='Search domains or owners';search.setAttribute('aria-label','Search hosting domains');
  controls.append(search,refresh);d.append(controls);
  const summary=el('p'),notice=el('p'),list=el('div',undefined,'account-list');summary.setAttribute('role','status');d.append(summary,notice,list);
- const labels={https_ready:'HTTPS configured',waiting_dns:'Waiting for DNS',waiting_tls_retry:'Certificate retry scheduled',needs_attention:'Needs attention',existing_site_preserved:'Existing website preserved',inventory_only:'Inventory only',deployed_waiting_dns:'Application deployed · waiting for DNS',deployed_tls_needs_attention:'Application deployed · HTTPS needs attention',waiting_repository:'Waiting for repository'};
+ const labels={verification_pending:'Configured domain · hosting verification pending',https_ready:'HTTPS configured',waiting_dns:'Waiting for DNS',waiting_tls_retry:'Certificate retry scheduled',needs_attention:'Needs attention',existing_site_preserved:'Existing website preserved',inventory_only:'Inventory only',deployed_waiting_dns:'Application deployed · waiting for DNS',deployed_tls_needs_attention:'Application deployed · HTTPS needs attention',waiting_repository:'Waiting for repository'};
  let domains=[];
  const draw=()=>{
   list.replaceChildren();const q=search.value.trim().toLowerCase();const shown=domains.filter(x=>(x.name+' '+x.owner+' '+x.status).toLowerCase().includes(q));
@@ -388,7 +388,7 @@ async function hostingDomainsView(d){
    if(x.configuration)info.append(el('p','Existing configuration: '+x.configuration));
    if(x.checked_at)info.append(el('p','Last checked: '+new Date(x.checked_at*1000).toLocaleString()));
    row.append(info);
-   if(x.status==='https_ready'){const visit=el('a','Open website ↗');visit.href='https://'+x.name+'/';visit.target='_blank';visit.rel='noopener noreferrer';row.append(visit)}
+   {const visit=el('a',x.status==='https_ready'?'Open website ↗':'Check website ↗');visit.href='https://'+x.name+'/';visit.target='_blank';visit.rel='noopener noreferrer';row.append(visit)}
    list.append(row);
   }
  };
