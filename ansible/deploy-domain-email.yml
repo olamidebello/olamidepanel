@@ -1,0 +1,215 @@
+---
+- name: Provision domain email on OlamidePanel
+  hosts: panel_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  vars:
+    mail_domains_source: panel
+    mail_domains: []
+    mail_accounts: []
+    mail_extra_domains: []
+    mail_selector: panel
+  pre_tasks:
+    - name: Validate platform and hostname
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - mail_domains_source in ['panel', 'inventory']
+          - mail_hostname | default('') is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          - mail_selector is match('^[a-z][a-z0-9]{0,30}$')
+    - name: Verify existing trusted TLS certificate covers the mail hostname
+      ansible.builtin.command:
+        argv: [openssl, x509, -in, '/etc/letsencrypt/live/{{ mail_hostname }}/fullchain.pem', -noout, -checkend, '86400', -checkhost, '{{ mail_hostname }}']
+      changed_when: false
+      check_mode: false
+    - name: Verify certificate trust and hostname
+      ansible.builtin.command:
+        argv: [openssl, verify, -CApath, /etc/ssl/certs, -untrusted, "/etc/letsencrypt/live/{{ mail_hostname }}/fullchain.pem", -verify_hostname, "{{ mail_hostname }}", "/etc/letsencrypt/live/{{ mail_hostname }}/fullchain.pem"]
+      changed_when: false
+      check_mode: false
+    - name: Verify private key exists
+      ansible.builtin.stat:
+        path: '/etc/letsencrypt/live/{{ mail_hostname }}/privkey.pem'
+      register: mail_key
+    - name: Require private key
+      ansible.builtin.assert:
+        that: mail_key.stat.exists
+    - name: Read active panel domains using existing read-only exporter
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/export_domain_accounts.py]
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      register: mail_panel_inventory
+      changed_when: false
+      check_mode: false
+      when: mail_domains_source == 'panel'
+    - name: Resolve operator-approved domain inventory
+      ansible.builtin.set_fact:
+        mail_effective_domains: "{{ ((mail_panel_inventory.stdout | default('[]') | from_json | selectattr('active') | map(attribute='domain') | list) if mail_domains_source == 'panel' else mail_domains) + mail_extra_domains }}"
+    - name: Deduplicate domain inventory
+      ansible.builtin.set_fact:
+        mail_effective_domains: '{{ mail_effective_domains | unique | sort }}'
+    - name: Validate every domain before changing services
+      ansible.builtin.assert:
+        that:
+          - item is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          - item != mail_hostname
+      loop: '{{ mail_effective_domains }}'
+    - name: Validate mailboxes and password hashes
+      ansible.builtin.assert:
+        that:
+          - item.address is match('^[a-z0-9][a-z0-9._-]{0,63}@(?:[a-z0-9-]+\.)+[a-z]{2,63}$')
+          - item.address.split('@')[1] in mail_effective_domains
+          - item.password_hash is match('^\{SHA512-CRYPT\}\$6\$[./a-zA-Z0-9$]+$')
+      loop: '{{ mail_accounts }}'
+      no_log: true
+    - name: Reject duplicate mailbox addresses
+      ansible.builtin.assert:
+        that: mail_accounts | map(attribute='address') | unique | length == mail_accounts | length
+    - name: Inspect existing mail configuration and ownership marker
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop: [/etc/postfix/main.cf, /etc/dovecot/dovecot.conf, /etc/opendkim.conf, /etc/olamidepanel/mail-managed]
+      register: mail_existing
+    - name: Refuse to replace unmanaged mail services
+      ansible.builtin.assert:
+        that: mail_existing.results[3].stat.exists or not (mail_existing.results[0].stat.exists or mail_existing.results[1].stat.exists or mail_existing.results[2].stat.exists)
+        fail_msg: Existing unmanaged mail configuration found. Migrate it separately before using this playbook.
+  tasks:
+    - name: Create mail policy directory
+      ansible.builtin.file:
+        path: /etc/olamidepanel
+        state: directory
+        mode: '0755'
+    - name: Mark managed installation for interrupted-run recovery
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/mail-managed
+        content: "OlamidePanel domain email v1\n"
+        mode: '0600'
+    - name: Install mail packages without starting unconfigured services
+      ansible.builtin.apt:
+        name: [postfix, dovecot-core, dovecot-imapd, dovecot-lmtpd, opendkim, opendkim-tools]
+        state: present
+        update_cache: true
+        policy_rc_d: 101
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+    - name: Create virtual mail group
+      ansible.builtin.group:
+        name: olamide-vmail
+        system: true
+    - name: Create virtual mail user
+      ansible.builtin.user:
+        name: olamide-vmail
+        group: olamide-vmail
+        system: true
+        home: /var/vmail/olamidepanel
+        create_home: true
+        shell: /usr/sbin/nologin
+    - name: Look up virtual mail UID and GID
+      ansible.builtin.getent:
+        database: passwd
+        key: olamide-vmail
+    - name: Create protected mail directories
+      ansible.builtin.file:
+        path: '{{ item.path }}'
+        owner: '{{ item.owner }}'
+        group: '{{ item.group }}'
+        mode: '{{ item.mode }}'
+        state: directory
+      loop:
+        - {path: /var/vmail/olamidepanel, owner: olamide-vmail, group: olamide-vmail, mode: '0700'}
+        - {path: /etc/opendkim/olamidepanel, owner: opendkim, group: opendkim, mode: '0700'}
+        - {path: /etc/olamidepanel/mail-dns, owner: root, group: root, mode: '0755'}
+    - name: Create per-domain DKIM directories
+      ansible.builtin.file:
+        path: '/etc/opendkim/olamidepanel/{{ item }}'
+        state: directory
+        owner: opendkim
+        group: opendkim
+        mode: '0700'
+      loop: '{{ mail_effective_domains }}'
+    - name: Generate persistent per-domain DKIM keys
+      become_user: opendkim
+      ansible.builtin.command:
+        argv: [opendkim-genkey, -b, '2048', -d, '{{ item }}', -s, '{{ mail_selector }}', -D, '/etc/opendkim/olamidepanel/{{ item }}']
+        creates: '/etc/opendkim/olamidepanel/{{ item }}/{{ mail_selector }}.private'
+      loop: '{{ mail_effective_domains }}'
+    - name: Install managed mail configuration
+      ansible.builtin.template:
+        src: 'templates/mail/{{ item.src }}.j2'
+        dest: '{{ item.dest }}'
+        owner: root
+        group: '{{ item.group | default("root") }}'
+        mode: '{{ item.mode | default("0644") }}'
+        backup: true
+      loop:
+        - {src: main.cf, dest: /etc/postfix/main.cf}
+        - {src: master.cf, dest: /etc/postfix/master.cf}
+        - {src: domains, dest: /etc/postfix/olamide-domains}
+        - {src: recipients, dest: /etc/postfix/olamide-recipients}
+        - {src: senders, dest: /etc/postfix/olamide-senders}
+        - {src: dovecot.conf, dest: /etc/dovecot/dovecot.conf}
+        - {src: users, dest: /etc/dovecot/olamide-users, group: dovecot, mode: '0640'}
+        - {src: opendkim.conf, dest: /etc/opendkim.conf}
+        - {src: KeyTable, dest: /etc/opendkim/olamidepanel/KeyTable, group: opendkim, mode: '0640'}
+        - {src: SigningTable, dest: /etc/opendkim/olamidepanel/SigningTable, group: opendkim, mode: '0640'}
+      no_log: true
+      notify: Restart mail services
+    - name: Compile Postfix lookup maps
+      ansible.builtin.command:
+        argv: [postmap, 'hash:/etc/postfix/olamide-{{ item }}']
+      loop: [domains, recipients, senders]
+      changed_when: false
+    - name: Export required DNS instructions for every domain
+      ansible.builtin.template:
+        src: templates/mail/dns.txt.j2
+        dest: '/etc/olamidepanel/mail-dns/{{ item }}.txt'
+        mode: '0644'
+      loop: '{{ mail_effective_domains }}'
+    - name: Install certificate renewal hook
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/renewal-hooks/deploy/olamidepanel-mail
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          set -eu
+          /usr/sbin/postfix check
+          /usr/bin/doveconf -n >/dev/null
+          /bin/systemctl reload postfix dovecot
+    - name: Validate Postfix configuration
+      ansible.builtin.command: /usr/sbin/postfix check
+      changed_when: false
+    - name: Validate Dovecot configuration
+      ansible.builtin.command: /usr/bin/doveconf -n
+      changed_when: false
+      no_log: true
+    - name: Validate DKIM configuration
+      ansible.builtin.command: /usr/sbin/opendkim -n -x /etc/opendkim.conf
+      changed_when: false
+    - name: Apply configuration before checking listeners
+      ansible.builtin.meta: flush_handlers
+    - name: Enable mail services
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+      loop: [opendkim, dovecot, postfix]
+    - name: Verify local mail listeners
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: '{{ item }}'
+        timeout: 30
+      loop: [25, 587, 993]
+    - name: Report activation requirements
+      ansible.builtin.debug:
+        msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/587/993. No external delivery has been verified.'
+  handlers:
+    - name: Restart mail services
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: restarted
+      loop: [opendkim, dovecot, postfix]

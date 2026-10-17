@@ -1,0 +1,31 @@
+# Managed by OlamidePanel
+compatibility_level = 3.6
+myhostname = {{ mail_hostname }}
+mydestination = $myhostname, localhost, localhost.localdomain
+inet_interfaces = all
+inet_protocols = ipv4
+mynetworks = 127.0.0.0/8
+relay_domains =
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_recipient_restrictions = reject_non_fqdn_recipient, reject_unknown_recipient_domain
+smtpd_reject_unlisted_recipient = yes
+disable_vrfy_command = yes
+virtual_mailbox_domains = hash:/etc/postfix/olamide-domains
+virtual_mailbox_maps = hash:/etc/postfix/olamide-recipients
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = no
+smtpd_tls_auth_only = yes
+smtpd_tls_security_level = may
+smtpd_tls_cert_file = /etc/letsencrypt/live/{{ mail_hostname }}/fullchain.pem
+smtpd_tls_key_file = /etc/letsencrypt/live/{{ mail_hostname }}/privkey.pem
+smtpd_tls_mandatory_protocols = >=TLSv1.2
+smtp_tls_security_level = may
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+smtpd_sender_login_maps = hash:/etc/postfix/olamide-senders
+smtpd_milters = inet:127.0.0.1:8891
+non_smtpd_milters = $smtpd_milters
+milter_default_action = tempfail
+milter_protocol = 6
+message_size_limit = 26214400

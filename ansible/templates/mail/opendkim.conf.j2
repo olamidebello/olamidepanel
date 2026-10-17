@@ -1,0 +1,11 @@
+Syslog yes
+UMask 007
+UserID opendkim
+Mode sv
+Canonicalization relaxed/simple
+Socket inet:8891@127.0.0.1
+KeyTable file:/etc/opendkim/olamidepanel/KeyTable
+SigningTable refile:/etc/opendkim/olamidepanel/SigningTable
+InternalHosts 127.0.0.1
+OversignHeaders From
+MacroList daemon_name=ORIGINATING

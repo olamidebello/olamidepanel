@@ -1,0 +1,14 @@
+# Copy outside Git and encrypt with Ansible Vault.
+panel_hostname: hosting.example.com
+panel_acme_email: operator@example.com
+panel_public_ipv4: 192.0.2.10
+hosting_enable_domain_ssh: true
+hosting_enable_email: true
+# Fail final coverage check if any catalog tool remains partial/unimplemented.
+hosting_require_complete: false
+# SSH defaults to disabled; map approved owner IDs to keys/access explicitly.
+domain_owner_ssh: {}
+mail_hostname: mail.example.com
+mail_domains_source: panel
+mail_extra_domains: []
+mail_accounts: []

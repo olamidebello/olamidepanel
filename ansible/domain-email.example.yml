@@ -1,0 +1,12 @@
+# Copy outside the repository and encrypt using ansible-vault encrypt.
+mail_hostname: mail.example.com
+mail_domains_source: panel
+# Optional operator-hosted domains outside the panel database:
+mail_extra_domains: []
+# Inventory-only alternative: mail_domains_source: inventory
+# mail_domains: [example.com]
+# Generate hashes interactively: doveadm pw -s SHA512-CRYPT
+# Full authoritative account list; removal disables access but retains stored mail.
+mail_accounts: []
+# - address: admin@example.com
+#   password_hash: '{SHA512-CRYPT}$6$...'

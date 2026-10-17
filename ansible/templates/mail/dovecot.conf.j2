@@ -1,0 +1,48 @@
+# Managed standalone configuration; no system-user authentication
+protocols = imap lmtp
+listen = *
+auth_mechanisms = plain login
+disable_plaintext_auth = yes
+auth_username_format = %Lu
+ssl = required
+ssl_min_protocol = TLSv1.2
+ssl_cert = </etc/letsencrypt/live/{{ mail_hostname }}/fullchain.pem
+ssl_key = </etc/letsencrypt/live/{{ mail_hostname }}/privkey.pem
+mail_location = maildir:~/Maildir
+mail_uid = olamide-vmail
+mail_gid = olamide-vmail
+first_valid_uid = {{ ansible_facts.getent_passwd['olamide-vmail'][1] }}
+passdb {
+  driver = passwd-file
+  args = /etc/dovecot/olamide-users
+}
+userdb {
+  driver = passwd-file
+  args = /etc/dovecot/olamide-users
+}
+service imap-login {
+  inet_listener imap {
+    port = 0
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+protocol lmtp {
+  postmaster_address = postmaster@{{ mail_hostname }}
+}

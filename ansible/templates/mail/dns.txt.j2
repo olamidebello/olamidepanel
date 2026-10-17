@@ -1,0 +1,10 @@
+Domain: {{ item }}
+Publish MX: {{ item }}. 3600 IN MX 10 {{ mail_hostname }}.
+Publish A: {{ mail_hostname }}. 3600 IN A <YOUR_PUBLIC_IPV4>
+Merge SPF into your ONE existing SPF record (include other legitimate senders):
+{{ item }}. 3600 IN TXT "v=spf1 mx ~all"
+_dmarc.{{ item }}. 3600 IN TXT "v=DMARC1; p=none"
+Publish DKIM TXT from /etc/opendkim/olamidepanel/{{ item }}/{{ mail_selector }}.txt
+Ask hosting provider to set IPv4 PTR to {{ mail_hostname }}.
+Use {{ mail_hostname }} for IMAPS 993 and SMTP STARTTLS 587; login with full email address.
+Existing mail providers: migrate mailboxes first, then change MX. DNS is not changed by this playbook.

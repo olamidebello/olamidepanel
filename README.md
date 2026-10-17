@@ -4,6 +4,14 @@
 
 Independent Debian 12 hosting-panel foundation, inspired by the hosting-user and server-admin workflows in the supplied cPanel/WHM inventory. This is **not cPanel**, is not affiliated with cPanel, and does not reproduce its proprietary implementation or licensed add-ons. **Not production-ready or a complete cPanel replacement.**
 
+## Per-domain hosting suite
+
+Use [the hosting-suite playbook](docs/DOMAIN_HOSTING_SUITE.md) to configure existing website automation, Linux domain access and email together, and produce a per-domain implementation coverage report. Full cPanel feature parity remains incomplete.
+
+## Domain email automation
+
+Provision SMTP, IMAP, per-domain DKIM and automatic domain discovery with [the domain email playbooks](docs/DOMAIN_EMAIL.md). Mailbox accounts remain operator-managed; DNS and public delivery require deployment verification.
+
 ## Documentation
 
 - [User manual](docs/USER_MANUAL.md): dashboard, file/domain tasks, account preferences and super-admin controls.

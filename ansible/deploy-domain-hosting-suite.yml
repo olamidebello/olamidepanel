@@ -1,0 +1,97 @@
+---
+- name: Validate existing OlamidePanel hosting-suite deployment
+  hosts: panel_servers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require supported platform and settings
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - panel_hostname | default('') is match('^(?:[a-z0-9-]+\.)+[a-z]{2,63}$')
+          - panel_acme_email | default('') is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
+    - name: Validate public IPv4 without third-party collections
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, -c, 'import ipaddress,sys; ipaddress.IPv4Address(sys.argv[1])', '{{ panel_public_ipv4 }}']
+      changed_when: false
+      check_mode: false
+    - name: Require an installed panel and current source checkout
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop:
+        - /opt/olamidepanel/venv/bin/python
+        - /opt/olamidepanel/panel/server.py
+        - /opt/olamidepanel/repo/deploy/export_domain_accounts.py
+        - /etc/olamidepanel/database.json
+      register: hosting_prerequisites
+    - name: Verify prerequisites before configuring services
+      ansible.builtin.assert:
+        that: item.stat.exists
+      loop: '{{ hosting_prerequisites.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+    - name: Install website provisioning policy
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/provisioning.json
+        content: '{{ {"public_ipv4": panel_public_ipv4, "panel_hostname": panel_hostname, "acme_email": panel_acme_email} | to_nice_json }}'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Install website provisioning units
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/{{ item }}'
+        dest: '/etc/systemd/system/{{ item }}'
+        mode: '0644'
+      loop: [olamidepanel-websites.service, olamidepanel-websites.timer]
+    - name: Enable website provisioning worker
+      ansible.builtin.systemd:
+        name: olamidepanel-websites.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+- import_playbook: enable-domain-ssh-automation.yml
+  when: hosting_enable_domain_ssh | default(true) | bool
+
+- import_playbook: enable-domain-email-automation.yml
+  when: hosting_enable_email | default(true) | bool
+
+- name: Publish implementation coverage for every active domain
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Install current implementation inventory
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '/opt/olamidepanel/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+      loop: [modules.py, module-audit.json]
+    - name: Generate domain implementation inventory without exposing DB credentials
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -c, '{{ lookup("file", playbook_dir + "/../deploy/domain_feature_report.py") }}']
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      register: hosting_feature_report
+      changed_when: false
+    - name: Save operator domain feature report
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/domain-feature-report.json
+        content: '{{ hosting_feature_report.stdout }}'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Report real scope and incomplete features
+      ansible.builtin.debug:
+        msg:
+          - 'Static website request worker, domain Linux access and optional SMTP/IMAP/DKIM are configured; public readiness still requires DNS and service validation.'
+          - 'Full per-domain implementation inventory: /etc/olamidepanel/domain-feature-report.json'
+          - 'This is not complete cPanel parity. The report distinguishes implementation from installed/running services.'
+    - name: Require full feature parity only when explicitly requested
+      ansible.builtin.assert:
+        that: (hosting_feature_report.stdout | from_json).coverage_complete
+        fail_msg: 'Full parity is unavailable. Review missing/partial tools in /etc/olamidepanel/domain-feature-report.json.'
+      when: hosting_require_complete | default(false) | bool

@@ -1,0 +1,69 @@
+---
+- import_playbook: deploy-domain-email.yml
+- name: Enable ongoing reconciliation of email domains
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Verify deployed mail playbook
+      ansible.builtin.stat:
+        path: /opt/olamidepanel/repo/ansible/deploy-domain-email.yml
+      register: mail_playbook
+    - name: Require current deployed repository
+      ansible.builtin.assert:
+        that: mail_playbook.stat.exists
+    - name: Install local Ansible runtime
+      ansible.builtin.apt:
+        name: ansible-core
+        state: present
+    - name: Save protected authoritative mail policy
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/mail-policy.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {'mail_hostname': mail_hostname, 'mail_domains_source': mail_domains_source | default('panel'),
+          'mail_domains': mail_domains | default([]), 'mail_extra_domains': mail_extra_domains | default([]),
+          'mail_accounts': mail_accounts | default([]), 'mail_selector': mail_selector | default('panel')} | to_nice_json }}
+      no_log: true
+    - name: Install local mail inventory
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/mail-local.ini
+        mode: '0600'
+        content: |
+          [panel_servers]
+          localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+    - name: Install mail reconciliation service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-mail.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Reconcile OlamidePanel domain mail services
+          After=network-online.target mysql.service
+          Wants=network-online.target
+          [Service]
+          Type=oneshot
+          User=root
+          UMask=0077
+          ExecStart=/usr/bin/ansible-playbook -i /etc/olamidepanel/mail-local.ini /opt/olamidepanel/repo/ansible/deploy-domain-email.yml -e @/etc/olamidepanel/mail-policy.json
+          TimeoutStartSec=15min
+    - name: Install automatic reconciliation timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-mail.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Discover new hosted email domains every fifteen minutes
+          [Timer]
+          OnBootSec=5min
+          OnUnitInactiveSec=15min
+          RandomizedDelaySec=30
+          [Install]
+          WantedBy=timers.target
+    - name: Activate email reconciliation timer
+      ansible.builtin.systemd:
+        name: olamidepanel-mail.timer
+        state: started
+        enabled: true
+        daemon_reload: true
