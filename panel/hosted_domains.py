@@ -4,15 +4,26 @@ import re
 from pathlib import Path
 
 SNAPSHOT = Path('/var/lib/olamidepanel/hosted-domains.json')
+OPERATOR_DOMAINS = (
+    'africanappsstore.space', 'olamidepanel.com', 'nekkeddating.com',
+    'olamideolatayobello.com', 'africanbrowser.com', 'dobhrap.com',
+    'aicourtsystem.com',
+)
+
 DOMAIN = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 
-def report(user, connect, snapshot=None):
+def report(user, connect, snapshot=None, operator_domains=OPERATOR_DOMAINS):
     if user.get('role') not in ('root', 'super_admin'):
         raise PermissionError('Super-admin access required')
     with connect() as con:
         rows = con.execute('SELECT d.name,u.username AS owner FROM domains d JOIN users u ON u.id=d.owner ORDER BY d.name').fetchall()
     inventory = {r['name']: {'name': r['name'], 'owner': r['owner'],
                             'status': 'inventory_only', 'source': 'Panel inventory'} for r in rows}
+    for name in operator_domains:
+        if DOMAIN.fullmatch(name):
+            inventory.setdefault(name, {'name': name, 'owner': 'Server operator',
+                                      'status': 'verification_pending',
+                                      'source': 'Operator hosting configuration'})
     notice = ''
     try:
         data = json.loads((snapshot or SNAPSHOT).read_text())
