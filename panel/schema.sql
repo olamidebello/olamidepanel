@@ -169,3 +169,14 @@ CREATE TABLE IF NOT EXISTS hosting_services (
  role_granted BOOLEAN NOT NULL DEFAULT FALSE,
  INDEX services_owner (owner,state,expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS watchdog_domains (
+ domain VARCHAR(253) CHARACTER SET ascii PRIMARY KEY,
+ checked_at BIGINT NOT NULL, healthy BOOLEAN NOT NULL, failures INT NOT NULL,
+ last_restart BIGINT NOT NULL DEFAULT 0, action VARCHAR(64) NOT NULL,
+ checks TEXT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS watchdog_events (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, domain VARCHAR(253) CHARACTER SET ascii NOT NULL,
+ checked_at BIGINT NOT NULL, healthy BOOLEAN NOT NULL, action VARCHAR(64) NOT NULL,
+ checks TEXT NOT NULL, INDEX watchdog_time(checked_at), INDEX watchdog_domain(domain,id)
+ ) ENGINE=InnoDB;

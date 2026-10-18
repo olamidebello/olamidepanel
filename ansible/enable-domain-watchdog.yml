@@ -1,0 +1,122 @@
+---
+- name: Install all-domain watchdog, MySQL reports and super-admin GUI
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    panel_install: /opt/olamidepanel
+    # Root-approved mappings only. All inventory domains are checked regardless.
+    watchdog_targets:
+      olamidepanel.com:
+        service: olamidepanel.service
+        checks:
+          - {port: 8090, path: /api/me, status: 401}
+  tasks:
+    - name: Require an existing MySQL panel installation
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop:
+        - '{{ panel_install }}/venv/bin/python'
+        - '{{ panel_install }}/panel/server.py'
+        - /etc/olamidepanel/database.json
+      register: prerequisites
+    - name: Validate prerequisites
+      ansible.builtin.assert:
+        that: item.stat.exists
+      loop: '{{ prerequisites.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+    - name: Install health probe dependency
+      ansible.builtin.apt:
+        name: curl
+        state: present
+    - name: Install backend and GUI with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '{{ panel_install }}/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [watchdog.py, hosted_domains.py, server.py, module-audit.json, static/app.js]
+      notify: Restart panel
+    - name: Install privileged worker
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/watchdog.py'
+        dest: '{{ panel_install }}/watchdog-runner.py'
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Configure explicit restartable backends
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/watchdog.json
+        content: '{{ {"targets": watchdog_targets} | to_nice_json }}'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Validate Python before activation
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -m, py_compile, '{{ panel_install }}/panel/watchdog.py', '{{ panel_install }}/panel/server.py', '{{ panel_install }}/watchdog-runner.py']
+      changed_when: false
+    - name: Create additive MySQL event and domain-state tables
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -c, 'import watchdog; watchdog.initialize()']
+        chdir: '{{ panel_install }}/panel'
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      become_user: olamidepanel
+      changed_when: false
+    - name: Install recurring worker service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-watchdog.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=OlamidePanel hosted-domain watchdog and event collector
+          After=network.target mysql.service nginx.service
+          [Service]
+          Type=oneshot
+          User=root
+          ExecStart={{ panel_install }}/venv/bin/python {{ panel_install }}/watchdog-runner.py
+          Environment=PANEL_DB_CONFIG=/etc/olamidepanel/database.json
+          TimeoutStartSec=900
+          UMask=0077
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          ReadWritePaths=/run
+    - name: Install minute timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-watchdog.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Continuously check all OlamidePanel domains
+          [Timer]
+          OnBootSec=90s
+          OnUnitInactiveSec=60s
+          AccuracySec=5s
+          Unit=olamidepanel-watchdog.service
+          [Install]
+          WantedBy=timers.target
+    - name: Enable scheduled checks
+      ansible.builtin.systemd:
+        name: olamidepanel-watchdog.timer
+        daemon_reload: true
+        enabled: true
+        state: restarted
+    - name: Apply GUI restart
+      ansible.builtin.meta: flush_handlers
+    - name: Run first collection
+      ansible.builtin.systemd:
+        name: olamidepanel-watchdog.service
+        state: started
+    - name: Show reporting location
+      ansible.builtin.debug:
+        msg: Open Administration -> Watchdog Events & Reports. All inventory domains are checked; backend recovery requires root-approved watchdog_targets. Journal logs are available through journalctl -u olamidepanel-watchdog.service.
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted

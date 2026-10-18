@@ -165,3 +165,17 @@ Reseller storefronts are supported through super-admin publishing approval, sell
 [Static websites guide](docs/STATIC_WEBSITES.md) describes the DNS-verified title/tagline publisher and separate Nginx/Certbot worker. Install it with `ansible/enable-static-websites.yml`. Domain inventory alone still does not publish a site; ownership TXT proof and a publishing request are required. Authoritative DNS, application hosting, website file uploads and a full builder remain unfinished.
 
 [Per-domain Linux users and SSH automation](docs/DOMAIN_SSH.md): separate domain identities, key rotation, SFTP confinement, optional shell access, suspension and an opt-in reconciliation timer.
+
+## All-domain watchdog and super-admin reporting
+
+Install on the panel host after pulling this release:
+
+```bash
+ansible-playbook -i localhost, -c local ansible/enable-domain-watchdog.yml
+```
+
+This installs a systemd event every minute after the preceding run completes, additive MySQL `watchdog_domains` and `watchdog_events` tables, authenticated `GET /api/watchdog`, and **Administration → Watchdog Events & Reports** for root/super-admin accounts. The page supports domain/action filtering, current checks, stale markers, 24-hour event totals, last 500 events, refresh and JSON report download. Events retain 90 days. Removed inventory entries remain visible as stale historical snapshots.
+
+Every run discovers panel account domains and exported hosting inventory, checks the local HTTPS vhost with certificate validation and no redirects, and validates nginx configuration. It starts stopped nginx only if its configuration passes. Local HTTPS checks do not prove public DNS, CDN or external reachability. For applications, add explicit root-approved service/loopback health mappings through `-e @/private/watchdog-targets.yml`; see `ansible/watchdog-targets.example.yml` and verify each deployed port/service first. By default only the panel backend has restart permission. Inventory strings never become shell commands or restart unit names.
+
+Mapped backends restart after two consecutive failures, at most once per 15 minutes per service, and are checked again after recovery. Generic HTTP 200 alone cannot detect database failures; configure database-backed checks and expected JSON fields as shown for OOB. Unmapped or persistently broken domains are reported for operator repair. DNS, certificates, configuration rewrites, deployments, database resets and payment-job retries are not performed by this watchdog. MySQL failure prevents report storage and GUI access; inspect `journalctl -u olamidepanel-watchdog.service` in that case. Disable scheduling with `systemctl disable --now olamidepanel-watchdog.timer`.

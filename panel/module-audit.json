@@ -1414,5 +1414,13 @@
     "source": "panel/hosted_domains.py; panel/static/app.js",
     "api": "/api/hosting-domains",
     "detail": "Read-only combined inventory of panel domains and operator-managed hosting, with search, deployment details and status refresh. Does not provision hosting or transfer ownership."
+  },
+  {
+    "category": "Administration",
+    "name": "Watchdog Events & Reports",
+    "status": "implemented",
+    "source": "panel/watchdog.py; deploy/watchdog.py; panel/schema.sql",
+    "api": "GET /api/watchdog",
+    "detail": "Super-admin health, event history, 24-hour totals and JSON reports; bounded recovery for explicitly configured backends. Local HTTPS does not verify public DNS. Requires watchdog Ansible installation."
   }
 ]

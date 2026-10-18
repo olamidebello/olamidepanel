@@ -1,0 +1,25 @@
+# Copy outside the repository, verify each actual service and port, then pass -e @/path/watchdog-targets.yml.
+# Setting watchdog_targets replaces the default mapping: include the panel entry.
+watchdog_targets:
+  olamidepanel.com:
+    service: olamidepanel.service
+    checks:
+      - {port: 8090, path: /api/me, status: 401}
+  olamideolatayobello.com:
+    service: oob-business.service
+    checks:
+      - {port: 18761, path: /api/identity, status: 200, field: application, value: oob-business-suite}
+      - {port: 18761, path: /api/setup/status, status: 200, field: required, value: false}
+      - {port: 18761, path: /api/me, status: 401}
+  africanappsstore.space:
+    service: africanappsstore.service
+    checks:
+      - {port: 18081, path: /api/health, status: 200}
+  dobhrap.com:
+    service: dobhrap.service
+    checks:
+      - {port: 18082, path: /api/setup/status, status: 200, field: required, value: false}
+  nekkeddating.com:
+    service: nekkeddating.service
+    checks:
+      - {port: 18083, path: /, status: 200}
