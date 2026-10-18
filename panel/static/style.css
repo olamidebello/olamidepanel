@@ -9,3 +9,31 @@
 nav .marketplace-subnav{font-size:11px;padding:8px 12px 8px 38px;color:#c7d8ce}#detail .marketplace-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 24px}#detail .marketplace-tabs button{color:var(--ink);background:var(--surface);border:1px solid var(--border);font-size:12px;padding:10px 12px}#detail .marketplace-tabs button.active{background:var(--green);color:white}#detail pre{white-space:pre-wrap;overflow-wrap:anywhere} @media(max-width:700px){#detail .marketplace-tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px}#detail .marketplace-tabs button{flex-shrink:0}nav .marketplace-subnav{padding:8px 12px}}
 
 .brand{padding:4px;background:#000;border-radius:10px;margin-left:0;margin-right:0}.brand img{display:block;width:100%;height:auto}.login-mark{width:min(100%,380px);margin:0 auto 24px;background:#000;border-radius:12px;overflow:hidden}.login-mark img{display:block;width:100%;height:auto}.footer-brand{display:block;width:150px;background:#000;border-radius:6px;overflow:hidden}.footer-brand img{display:block;width:100%;height:auto}
+
+/* Keep the signed-out screen focused on the form on phones and tablets. */
+@media(max-width:900px){
+ body:has(#login:not([hidden])){display:block}
+ body:has(#login:not([hidden]))>aside{position:static;width:100%;min-height:0;padding:12px 18px;overflow:visible}
+ body:has(#login:not([hidden])) .brand{width:180px;max-width:100%;margin:0 auto;padding:3px}
+ body:has(#login:not([hidden])) aside :is(.workspace-label,.nav-caption,nav,footer){display:none}
+ body:has(#login:not([hidden]))>main{margin:0;width:100%;padding:16px 18px}
+ body:has(#login:not([hidden])) header{margin-bottom:16px}
+ body:has(#login:not([hidden])) header h1{font-size:22px}
+ body:has(#login:not([hidden])) .breadcrumb{display:none}
+ #login{width:100%;max-width:460px;margin:0 auto;padding:22px}
+ #login .login-mark{display:none}
+ #login h2{font-size:26px;margin:10px 0}
+ #login h2 br{display:block}
+ #login p{margin:0 0 16px}
+ #login input{font-size:16px;margin:6px 0 14px;min-height:44px}
+ #login .terms-confirm input{min-height:17px;margin:3px 0}
+ #login .terms-confirm{margin:0 0 14px}
+ #login form button{min-height:46px}
+ #login .login-note{margin-top:14px}
+}
+@media(max-width:600px){
+ aside .brand{width:180px;max-width:100%}
+ main,header>div:first-child{min-width:0}
+ .header-actions{flex-shrink:0}
+ #login{padding:20px}
+}
