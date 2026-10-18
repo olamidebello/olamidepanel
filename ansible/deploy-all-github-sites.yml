@@ -17,7 +17,7 @@
 # Existing unrelated Nginx sites are never removed; conflicting vhosts are reported.
 # Panel updates require its existing service, virtualenv and MySQL configuration.
 # Panel data/MySQL are backed up before updating; schema rollback needs operator review.
-# AfricanBrowser publishes a source-project page, not an unbuilt Chromium binary.
+# AfricanBrowser builds its complete public website and links the published development APK.
 # Personal domain is skipped until explicitly mapped: -e personal_site_repo=olamidebello/NAME
 # Its prebuilt static files must be in public/index.html; other stacks need an adapter.
 # To add its repo, edit deployment_sites below; add an adapter for its actual stack.
@@ -149,242 +149,549 @@
       content: '{{ {"server_ipv4": deployment_ipv4, "admin_email": deployment_email, "sites": deployment_sites}
         | to_nice_json }}'
   - name: Install embedded deployment worker
+    tags: [deployment_worker]
     ansible.builtin.copy:
       dest: /usr/local/sbin/olamide-github-deploy
       owner: root
       group: root
       mode: '0700'
-      content: "#!/usr/bin/python3\n\"\"\"Operator-owned domain deployment. Installed by deploy-all-github-sites.yml.\"\
-        \"\"\nimport fcntl\nimport grp\nimport html\nimport json\nimport os\nfrom pathlib import Path\nimport pwd\n\
-        import re\nimport secrets\nimport shutil\nimport socket\nimport sqlite3\nimport subprocess\nimport tarfile\n\
-        import tempfile\nimport time\nimport urllib.request\n\nBASE = Path('/var/lib/olamide-github-deploy')\nMARK\
-        \ = '# Managed by olamide-github-deploy v1\\n'\nCFG = {}\n\ndef run(args, cwd=None, env=None, timeout=300):\n\
-        \    if args[0] == 'git':\n        env = dict(os.environ if env is None else env, GIT_TERMINAL_PROMPT='0')\n\
-        \    return subprocess.run(args, cwd=cwd, env=env, check=True, capture_output=True,\n                  \
-        \        text=True, timeout=timeout).stdout.strip()\n\ndef write(path, text, mode=0o600):\n    path = Path(path)\n\
-        \    path.parent.mkdir(parents=True, exist_ok=True)\n    tmp = path.with_name(path.name + '.tmp')\n    tmp.write_text(text)\n\
-        \    tmp.chmod(mode)\n    tmp.replace(path)\n\ndef account(name, data):\n    try:\n        user = pwd.getpwnam(name)\n\
-        \    except KeyError:\n        run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin',\
-        \ name])\n        user = pwd.getpwnam(name)\n    data.mkdir(parents=True, exist_ok=True, mode=0o700)\n \
-        \   os.chown(data, user.pw_uid, user.pw_gid)\n    data.chmod(0o700)\n    return user\n\ndef checkout(site):\n\
-        \    repo = site.get('repo')\n    if not repo:\n        return None\n    if not re.fullmatch(r'olamidebello/[A-Za-z0-9_.-]+',\
-        \ repo):\n        raise ValueError('Repository must be an olamidebello/name identifier')\n    url = 'https://github.com/'\
-        \ + repo + '.git'\n    branch = site.get('branch', 'main')\n    try:\n        refs = run(['git', 'ls-remote',\
-        \ '--heads', url, 'refs/heads/' + branch], timeout=90)\n    except subprocess.CalledProcessError:\n    \
-        \    # Missing/private/inaccessible source remains untouched and is retried later.\n        return None\n\
-        \    if not refs:\n        return None\n    sha = refs.split()[0]\n    root = BASE / 'sources' / site['domain']\n\
-        \    if root.exists():\n        if run(['git', 'remote', 'get-url', 'origin'], cwd=root) != url:\n     \
-        \       raise RuntimeError('Unexpected Git origin; refusing to change checkout')\n        # v1 cloned with\
-        \ --no-checkout. Preserve that incomplete repository and\n        # replace it only when the worktree contains\
-        \ absolutely nothing but .git.\n        if {p.name for p in root.iterdir()} == {'.git'}:\n            saved\
-        \ = BASE / 'backups' / site['domain'] / ('incomplete-checkout-' + str(time.time_ns()))\n            saved.parent.mkdir(parents=True,\
-        \ exist_ok=True, mode=0o700)\n            root.rename(saved)\n    if not root.exists():\n        root.parent.mkdir(parents=True,\
-        \ exist_ok=True)\n        with tempfile.TemporaryDirectory(prefix='.clone-', dir=root.parent) as staging:\n\
-        \            staged = Path(staging) / 'repository'\n            # Materialize the index and worktree before\
-        \ checking for local edits.\n            run(['git', 'clone', '--branch', branch, '--single-branch', url,\
-        \ str(staged)], timeout=600)\n            staged.rename(root)\n    if run(['git', 'status', '--porcelain'],\
-        \ cwd=root):\n        raise RuntimeError('Source checkout has local changes; refusing to overwrite')\n \
-        \   run(['git', 'fetch', 'origin', 'refs/heads/' + branch], cwd=root, timeout=600)\n    sha = run(['git',\
-        \ 'rev-parse', 'FETCH_HEAD'], cwd=root)\n    run(['git', 'checkout', '--detach', sha], cwd=root)\n    return\
-        \ root, sha\n\ndef export(root, sha, dest):\n    dest.mkdir(parents=True, exist_ok=True, mode=0o755)\n \
-        \   with tempfile.TemporaryFile() as archive:\n        subprocess.run(['git', 'archive', sha], cwd=root,\
-        \ stdout=archive, check=True)\n        archive.seek(0)\n        with tarfile.open(fileobj=archive) as tf:\n\
-        \            # Repositories are executable trusted source, but links must not escape releases.\n       \
-        \     for member in tf.getmembers():\n                if member.issym() or member.islnk() or member.name.startswith('/')\
-        \ or '..' in Path(member.name).parts:\n                    raise RuntimeError('Unsafe archive member')\n\
-        \            tf.extractall(dest)\n    for path in [dest, *dest.rglob('*')]:\n        path.chmod(0o755 if\
-        \ path.is_dir() or path.stat().st_mode & 0o111 else 0o644)\n\ndef switch(link, target):\n    link = Path(link)\n\
-        \    if link.exists() and not link.is_symlink():\n        raise RuntimeError('Refusing to replace non-symlink\
-        \ deployment path: ' + str(link))\n    tmp = link.with_name(link.name + '.next')\n    tmp.unlink(missing_ok=True)\n\
-        \    tmp.symlink_to(target)\n    tmp.replace(link)\n\ndef health(port, route='/'):\n    for attempt in range(15):\n\
-        \        try:\n            with urllib.request.urlopen('http://127.0.0.1:' + str(port) + route, timeout=3)\
-        \ as response:\n                if response.status == 200:\n                    return\n        except Exception:\n\
-        \            pass\n        time.sleep(1)\n    raise RuntimeError('Backend readiness failed on port ' + str(port))\n\
-        \ndef service_exists(name):\n    return run(['systemctl', 'show', name, '--property=LoadState', '--value'])\
-        \ != 'not-found'\n\ndef backup_sqlite(data, backup):\n    if not data.exists():\n        return\n    backup.mkdir(parents=True,\
-        \ exist_ok=True, mode=0o700)\n    for p in data.rglob('*'):\n        if p.is_symlink():\n            raise\
-        \ RuntimeError('Symlink in persistent data requires operator review')\n        if p.is_file() and p.suffix\
-        \ not in ('.db', '.sqlite3', '.sqlite') and not p.name.endswith(('-wal', '-shm', '-journal')):\n       \
-        \     target = backup / p.relative_to(data)\n            target.parent.mkdir(parents=True, exist_ok=True)\n\
-        \            shutil.copy2(p, target)\n    for p in data.rglob('*'):\n        if p.is_file() and p.suffix\
-        \ in ('.db', '.sqlite3', '.sqlite'):\n            target = backup / p.relative_to(data)\n            target.parent.mkdir(parents=True,\
-        \ exist_ok=True)\n            with sqlite3.connect(str(p)) as source, sqlite3.connect(str(target)) as output:\n\
-        \                source.backup(output)\n\ndef app(site, root, sha):\n    kind, name, port = site['kind'],\
-        \ site['service'], site['port']\n    user_name = site['user']\n    data = Path('/var/lib') / name\n    user\
-        \ = account(user_name, data)\n    release = BASE / 'releases' / name / sha\n    if not release.exists():\n\
-        \        export(root, sha, release)\n    entry = 'server.py' if kind == 'dating' else 'app.py'\n    if not\
-        \ (release / entry).is_file():\n        raise RuntimeError('Expected application entry point missing')\n\
-        \    run(['/usr/bin/python3', '-m', 'compileall', '-q', str(release)])\n    base_env = {'PYTHONDONTWRITEBYTECODE':\
-        \ '1', 'PORT': str(port)}\n    if kind == 'store':\n        base_env.update(STORE_DATA=str(data), COOKIE_SECURE='1',\
-        \ BIND='127.0.0.1')\n    elif kind == 'dobhrap':\n        base_env.update(DOBHRAP_DB=str(data / 'dobhrap.db'),\
-        \ DOBHRAP_SECURE_COOKIE='1')\n    else:\n        base_env.update(NEKKED_DB=str(data / 'nekked.sqlite3'),\
-        \ NEKKED_HOST='127.0.0.1',\n                        NEKKED_SECURE_COOKIE='1', NEKKED_ORIGIN='https://' +\
-        \ site['domain'])\n    link = Path('/opt') / (name + '-github-current')\n    old = link.resolve() if link.is_symlink()\
-        \ else None\n    unit = Path('/etc/systemd/system') / (name + '.service')\n    old_unit = unit.read_text()\
-        \ if unit.exists() else None\n    if old_unit and not (old_unit.startswith(MARK) or site.get('adopt_service')):\n\
-        \        raise RuntimeError('Existing service not managed by this playbook')\n    # Do not take a port used\
-        \ by another application.\n    if not service_exists(name):\n        with socket.socket() as sock:\n   \
-        \         sock.bind(('127.0.0.1', port))\n    stamp = str(time.time_ns())\n    backup = BASE / 'backups'\
-        \ / site['domain'] / stamp\n    backup.mkdir(parents=True, mode=0o700)\n    if old_unit:\n        write(backup\
-        \ / 'service.unit', old_unit)\n    if service_exists(name):\n        run(['systemctl', 'stop', name])\n\
-        \    try:\n        backup_sqlite(data, backup / 'data')\n        if kind in ('store', 'dobhrap'):\n    \
-        \        credentials = BASE / 'credentials' / (name + '.json')\n            if credentials.exists():\n \
-        \               initial = json.loads(credentials.read_text())\n            else:\n                initial\
-        \ = {'email': CFG['admin_email'], 'password': secrets.token_urlsafe(30)}\n                write(credentials,\
-        \ json.dumps(initial, indent=2) + '\\n')\n            env = dict(os.environ, **base_env)\n            prefix\
-        \ = 'ADMIN_' if kind == 'store' else 'DOBHRAP_ADMIN_'\n            env[prefix + 'EMAIL'] = initial['email']\n\
-        \            env[prefix + 'PASSWORD'] = initial['password']\n            # Password stays out of command\
-        \ arguments, logs and service unit.\n            subprocess.run(['/usr/sbin/runuser', '-u', user_name, '--',\
-        \ '/usr/bin/python3', '-c',\n                            'import app; app.init()'], cwd=release, env=env,\
-        \ check=True,\n                           capture_output=True, timeout=60)\n        switch(link, release)\n\
-        \        env_lines = '\\n'.join('Environment=' + k + '=' + json.dumps(v) for k, v in base_env.items()\n\
-        \                              if True)\n        write(unit, MARK + f'''[Unit]\nDescription=GitHub deployment\
-        \ for {site['domain']}\nAfter=network.target\n[Service]\nUser={user_name}\nGroup={grp.getgrgid(user.pw_gid).gr_name}\n\
-        WorkingDirectory={link}\n{env_lines}\nExecStart=/usr/bin/python3 {link}/{entry}\nRestart=on-failure\nRestartSec=3\n\
-        NoNewPrivileges=true\nPrivateTmp=true\nProtectHome=true\nProtectSystem=strict\nReadWritePaths={data}\nUMask=0077\n\
-        [Install]\nWantedBy=multi-user.target\n''', 0o644)\n        run(['systemctl', 'daemon-reload'])\n      \
-        \  run(['systemctl', 'enable', '--now', name])\n        health(port, site.get('health', '/'))\n    except\
-        \ Exception:\n        run(['systemctl', 'stop', name])\n        if old:\n            switch(link, old)\n\
-        \        if old_unit:\n            write(unit, old_unit, 0o644)\n            run(['systemctl', 'daemon-reload'])\n\
-        \            run(['systemctl', 'start', name])\n        # Data backup is retained; schema rollback is deliberately\
-        \ not guessed.\n        raise\n    return f'proxy_pass http://127.0.0.1:{port};\\nproxy_set_header Host\
-        \ $host;\\nproxy_set_header X-Forwarded-Proto $scheme;'\n\ndef panel(site, root, sha):\n    current = Path('/opt/olamidepanel')\n\
-        \    python = current / 'venv/bin/python'\n    if not python.exists() or not Path('/etc/olamidepanel/database.json').exists():\n\
-        \        raise RuntimeError('Panel needs its initial MySQL/configuration installation before this updater\
-        \ can run')\n    if not service_exists('olamidepanel'):\n        raise RuntimeError('Existing olamidepanel\
-        \ systemd service required')\n    backup = BASE / 'backups' / site['domain'] / str(time.time_ns())\n   \
-        \ backup.mkdir(parents=True, mode=0o700)\n    run(['systemctl', 'stop', 'olamidepanel'])\n    old = current\
-        \ / 'panel'\n    try:\n        shutil.copytree(old, backup / 'panel')\n        shutil.copy2('/etc/olamidepanel/database.json',\
-        \ backup / 'database.json')\n        if Path('/var/lib/olamidepanel').exists():\n            shutil.copytree('/var/lib/olamidepanel',\
-        \ backup / 'data', symlinks=True)\n        # Transaction-consistent logical MySQL backup through the existing\
-        \ adapter.\n        dump = '''import sys\nsys.path.insert(0, '/opt/olamidepanel/panel')\nimport database,\
-        \ pymysql\nc=pymysql.connect(**database.configuration())\nwith c.cursor() as q:\n q.execute('SET TRANSACTION\
-        \ ISOLATION LEVEL REPEATABLE READ')\n q.execute('START TRANSACTION WITH CONSISTENT SNAPSHOT')\n q.execute('SHOW\
-        \ TABLES'); tables=[next(iter(row.values())) for row in q.fetchall()]\n print('SET FOREIGN_KEY_CHECKS=0;')\n\
-        \ for name in tables:\n  ident='`'+name.replace('`','``')+'`'\n  q.execute('SHOW CREATE TABLE '+ident);\
-        \ row=q.fetchone()\n  print('DROP TABLE IF EXISTS '+ident+';'); print(row['Create Table']+';')\n  q.execute('SELECT\
-        \ * FROM '+ident)\n  for row in q.fetchall():\n   cols=','.join('`'+k.replace('`','``')+'`' for k in row)\n\
-        \   print('INSERT INTO '+ident+' ('+cols+') VALUES ('+','.join(c.escape(v) for v in row.values())+');')\n\
-        \ print('SET FOREIGN_KEY_CHECKS=1;')\nc.rollback(); c.close()\n'''\n        with (backup / 'database.sql').open('w')\
-        \ as out:\n            subprocess.run([str(python), '-c', dump], stdout=out, stderr=subprocess.PIPE, check=True,\
-        \ timeout=600)\n        stage = BASE / 'releases' / 'olamidepanel' / sha\n        if not stage.exists():\n\
-        \            export(root, sha, stage)\n        run([str(python), '-m', 'pip', 'install', '-r', str(stage\
-        \ / 'requirements.txt')], timeout=600)\n        run([str(python), '-m', 'compileall', '-q', str(stage /\
-        \ 'panel')])\n        shutil.copytree(stage / 'panel', old, dirs_exist_ok=True)\n        run(['systemctl',\
-        \ 'start', 'olamidepanel'])\n        health(site['port'])\n    except Exception:\n        if (backup / 'panel').exists():\n\
-        \            shutil.copytree(backup / 'panel', old, dirs_exist_ok=True)\n        run(['systemctl', 'start',\
-        \ 'olamidepanel'])\n        raise\n    return f\"proxy_pass http://127.0.0.1:{site['port']};\\nproxy_set_header\
-        \ Host $host;\\nproxy_set_header X-Forwarded-Proto $scheme;\"\n\ndef browser(site, root, sha):\n    # Host\
-        \ a truthful source-project page; do not compile Chromium on a shared VPS.\n    dest = BASE / 'public' /\
-        \ site['domain'] / sha\n    dest.mkdir(parents=True, exist_ok=True)\n    logo = root / 'assets/branding/africanbrowser-logo.png'\n\
-        \    if logo.is_file():\n        shutil.copy2(logo, dest / 'logo.png')\n    write(dest / 'index.html', '''<!doctype\
-        \ html><html lang=\"en\"><meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"\
-        ><title>AfricanBrowser</title>\n<style>body{font:18px system-ui;max-width:850px;margin:8vh auto;padding:24px;background:#10251d;color:#fff}img{max-width:100%;max-height:260px}a{color:#f3cf65}</style>\n\
-        <img src=\"/logo.png\" alt=\"AfricanBrowser\"><h1>AfricanBrowser</h1><p>\u2026 browse the black ways.</p>\n\
-        <p>Browser source and build tools for Android and desktop. Compiled downloads are not published here yet.</p>\n\
-        <p><a href=\"https://github.com/olamidebello/AfricanBrowser\">View source and build instructions</a></p>\n\
-        <p>Copyright \xA9 2026 Olamide Olatayo Bello.</p></html>''', 0o644)\n    dest.chmod(0o755)\n    return 'root\
-        \ ' + str(dest) + ';\\nindex index.html;\\ntry_files $uri $uri/ =404;'\n\ndef static_site(site, root, sha):\n\
-        \    # An explicitly mapped prebuilt static website, never the repository root.\n    relative = site.get('public_dir',\
-        \ 'public')\n    if Path(relative).is_absolute() or '..' in Path(relative).parts or relative in ('', '.'):\n\
-        \        raise RuntimeError('Set public_dir to a dedicated prebuilt public directory')\n    source = (root\
-        \ / relative).resolve()\n    if not source.is_relative_to(root.resolve()) or not (source / 'index.html').is_file():\n\
-        \        raise RuntimeError('Static repository needs public_dir/index.html; no build stack is guessed')\n\
-        \    dest = BASE / 'public' / site['domain'] / sha\n    if not dest.exists():\n        dest.parent.mkdir(parents=True,\
-        \ exist_ok=True, mode=0o755)\n        for path in source.rglob('*'):\n            if path.is_symlink() or\
-        \ path.name.startswith('.') or path.suffix in ('.py', '.php', '.sql', '.env'):\n                raise RuntimeError('Static\
-        \ public directory contains private or executable server files')\n        shutil.copytree(source, dest)\n\
-        \        for path in [dest, *dest.rglob('*')]:\n            path.chmod(0o755 if path.is_dir() else 0o644)\n\
-        \    return 'root ' + str(dest) + ';\\nindex index.html;\\ntry_files $uri $uri/ =404;'\n\ndef conflicts(domain,\
-        \ target):\n    dump = run(['nginx', '-T'])\n    chunks = re.split(r'^# configuration file (.+):\\s*$',\
-        \ dump, flags=re.M)\n    for i in range(1, len(chunks), 2):\n        path, text = Path(chunks[i].strip()),\
-        \ chunks[i+1]\n        if path.resolve() == target.resolve():\n            continue\n        text = re.sub(r'#[^\\\
-        n]*', '', text)\n        names = [x for value in re.findall(r'\\bserver_name\\s+([^;]+);', text) for x in\
-        \ value.split()]\n        for name in names:\n            for host in (domain, 'www.' + domain):\n     \
-        \           match = (name.strip('\\\"\\'').lower() == host or name.startswith('~') or\n                \
-        \         name.startswith('*.') and host.endswith(name[1:]) or\n                         name.startswith('.')\
-        \ and (host == name[1:] or host.endswith(name)) or\n                         name.endswith('.*') and host.startswith(name[:-1]))\n\
-        \                if match:\n                    raise RuntimeError('Conflicting existing Nginx host in '\
-        \ + str(path))\n\ndef dns_ready(host):\n    import dns.resolver\n    for ns in ('1.1.1.1', '8.8.8.8'):\n\
-        \        resolver = dns.resolver.Resolver(configure=False)\n        resolver.nameservers = [ns]\n      \
-        \  resolver.lifetime = 5\n        try:\n            if {str(a) for a in resolver.resolve(host, 'A')} !=\
-        \ {CFG['server_ipv4']}:\n                return False\n            try:\n                if list(resolver.resolve(host,\
-        \ 'AAAA')):\n                    return False\n            except dns.resolver.NoAnswer:\n             \
-        \   pass\n        except dns.exception.DNSException:\n            return False\n    return True\n\ndef vhost(site,\
-        \ location):\n    domain = site['domain']\n    target = Path('/etc/nginx/sites-available') / ('olamide-auto-'\
-        \ + domain)\n    conflicts(domain, target)\n    previous = target.read_text() if target.exists() else None\n\
-        \    if previous and not (previous.startswith(MARK) or previous.startswith('# Managed by olamide-six-domains\
-        \ v1\\n')):\n        raise RuntimeError('Unmanaged vhost; replacement refused')\n    cert = Path('/etc/letsencrypt/live')\
-        \ / domain\n    tls = (cert / 'fullchain.pem').exists() and (cert / 'privkey.pem').exists()\n    hosts =\
-        \ [domain]\n    www_ready = dns_ready('www.' + domain)\n    if www_ready:\n        hosts.append('www.' +\
-        \ domain)\n    acme = 'location ^~ /.well-known/acme-challenge/ { root /var/lib/olamide-six-domains/acme;\
-        \ }\\n'\n    content = MARK + 'server { listen 80; server_name ' + ' '.join(hosts) + ';\\n' + acme\n   \
-        \ if tls:\n        content += 'location / { return 301 https://' + domain + '$request_uri; }\\n}\\n'\n \
-        \       content += 'server { listen 443 ssl; server_name ' + ' '.join(hosts) + ';\\n'\n        content +=\
-        \ 'ssl_certificate ' + str(cert / 'fullchain.pem') + ';\\nssl_certificate_key ' + str(cert / 'privkey.pem')\
-        \ + ';\\n'\n    content += 'client_max_body_size 25m;\\nlocation / {\\n' + location + '\\n}\\n}\\n'\n  \
-        \  link = Path('/etc/nginx/sites-enabled') / target.name\n    if link.exists() or link.is_symlink():\n \
-        \       if not link.is_symlink() or link.resolve() != target.resolve():\n            raise RuntimeError('Unexpected\
-        \ enabled Nginx file')\n    if previous != content:\n        if previous:\n            write(BASE / 'backups'\
-        \ / domain / (str(time.time_ns()) + '.nginx'), previous)\n        write(target, content, 0o644)\n    made_link\
-        \ = not link.is_symlink()\n    if made_link:\n        link.symlink_to(target)\n    try:\n        run(['nginx',\
-        \ '-t'])\n        run(['systemctl', 'reload', 'nginx'])\n    except Exception:\n        if previous is not\
-        \ None:\n            write(target, previous, 0o644)\n        else:\n            target.unlink(missing_ok=True)\n\
-        \        if made_link:\n            link.unlink(missing_ok=True)\n        run(['nginx', '-t'])\n       \
-        \ run(['systemctl', 'reload', 'nginx'])\n        raise\n    if not dns_ready(domain):\n        return {'status':\
-        \ 'deployed_waiting_dns', 'www': 'ready' if www_ready else 'waiting_dns'}\n    # Certbot plugin expands\
-        \ existing certificates and preserves proxy configuration.\n    args = ['certbot', '--nginx', '--non-interactive',\
-        \ '--agree-tos', '--redirect',\n            '--keep-until-expiring', '--expand', '--cert-name', domain,\
-        \ '-m', CFG['admin_email']]\n    for host in hosts:\n        args.extend(['-d', host])\n    try:\n     \
-        \   run(args, timeout=240)\n        run(['nginx', '-t'])\n        run(['systemctl', 'reload', 'nginx'])\n\
-        \        # Uses normal public DNS and validates certificate trust and hostname.\n        with urllib.request.urlopen('https://'\
-        \ + domain + '/', timeout=20) as response:\n            if response.status != 200:\n                raise\
-        \ RuntimeError('Public HTTPS health failed')\n        return {'status': 'https_ready', 'www': 'ready' if\
-        \ www_ready else 'waiting_dns'}\n    except Exception as exc:\n        return {'status': 'deployed_tls_needs_attention',\
-        \ 'detail': type(exc).__name__,\n                'www': 'ready' if www_ready else 'waiting_dns'}\n\ndef\
-        \ publish_panel_snapshot(results):\n    panel_data = Path('/var/lib/olamidepanel')\n    try:\n        group_id\
-        \ = grp.getgrnam('olamidepanel').gr_gid\n    except KeyError:\n        return\n    if not panel_data.is_dir():\n\
-        \        return\n    snapshot = panel_data / 'hosted-domains.json'\n    try:\n        previous = json.loads(snapshot.read_text())\n\
-        \        rows = {r['domain']: r for r in previous.get('domains', []) if isinstance(r, dict) and 'domain'\
-        \ in r}\n    except (OSError, ValueError, TypeError, KeyError):\n        rows = {}\n    for result in results:\n\
-        \        name = result['domain']\n        if result['status'] == 'waiting_repository' and name in rows:\n\
-        \            # Existing static hosting remains valid; source availability is separate.\n            row\
-        \ = dict(rows[name], deployment_status='waiting_repository',\n                       deployment_checked_at=result['checked_at'])\n\
-        \        else:\n            # Replace obsolete roots rather than merging them into application status.\n\
-        \            row = {k: v for k, v in result.items() if k != 'location'}\n            row['deployment_status']\
-        \ = 'running' if result.get('application_ready') else result['status']\n            row['deployment_checked_at']\
-        \ = result['checked_at']\n            if result.get('application_ready'):\n                location = result.get('location',\
-        \ '')\n                backend = re.search(r'proxy_pass (http://127[.]0[.]0[.]1:[0-9]+);', location)\n \
-        \               document = re.search(r'^root ([^;]+);', location)\n                if backend:\n       \
-        \             row['backend'] = backend.group(1)\n                if document:\n                    row['document_root']\
-        \ = document.group(1)\n        rows[name] = row\n    write(snapshot, json.dumps({'updated_at': int(time.time()),\
-        \ 'domains': list(rows.values())}, indent=2) + '\\n', 0o640)\n    os.chown(snapshot, 0, group_id)\n\ndef\
-        \ main():\n    global CFG\n    os.umask(0o077)\n    CFG = json.loads(Path('/etc/olamide-github-deploy.json').read_text())\n\
-        \    with (BASE / 'worker.lock').open('w') as lock:\n        try:\n            fcntl.flock(lock, fcntl.LOCK_EX\
-        \ | fcntl.LOCK_NB)\n        except BlockingIOError:\n            print('Deployment already running')\n \
-        \           return\n        results = []\n        for site in CFG['sites']:\n            result = {'domain':\
-        \ site['domain'], 'checked_at': int(time.time()), 'repo': site.get('repo')}\n            try:\n        \
-        \        target = Path('/etc/nginx/sites-available') / ('olamide-auto-' + site['domain'])\n            \
-        \    # Check conflicts before stopping applications or updating code.\n                conflicts(site['domain'],\
-        \ target)\n                source = checkout(site)\n                if source is None:\n               \
-        \     result['status'] = 'waiting_repository'\n                else:\n                    root, sha = source\n\
-        \                    result['commit'] = sha\n                    previous_path = BASE / 'status' / (site['domain']\
-        \ + '.json')\n                    previous = json.loads(previous_path.read_text()) if previous_path.exists()\
-        \ else {}\n                    if previous.get('commit') == sha and previous.get('application_ready'):\n\
-        \                        location = previous['location']\n                        if site.get('port'):\n\
-        \                            health(site['port'], site.get('health', '/'))\n                    else:\n\
-        \                        if site['kind'] == 'panel':\n                            location = panel(site,\
-        \ root, sha)\n                        elif site['kind'] == 'browser':\n                            location\
-        \ = browser(site, root, sha)\n                        elif site['kind'] == 'static':\n                 \
-        \           location = static_site(site, root, sha)\n                        else:\n                   \
-        \         location = app(site, root, sha)\n                    result.update(application_ready=True, location=location)\n\
-        \                    result.update(vhost(site, location))\n            except Exception as exc:\n      \
-        \          # Avoid leaking SQL credentials, process environment or HTTP response bodies.\n             \
-        \   result.update(status='needs_attention', error=str(exc) if isinstance(exc, (RuntimeError, ValueError))\
-        \ else type(exc).__name__)\n            write(BASE / 'status' / (site['domain'] + '.json'), json.dumps(result,\
-        \ indent=2) + '\\n', 0o644)\n            results.append(result)\n        write(BASE / 'status.json', json.dumps(results,\
-        \ indent=2) + '\\n', 0o644)\n        publish_panel_snapshot(results)\n        print(json.dumps(results,\
-        \ indent=2))\n\nif __name__ == '__main__':\n    main()\n"
+      content: |
+        #!/usr/bin/python3
+        """Operator-owned domain deployment. Installed by deploy-all-github-sites.yml."""
+        import argparse
+        import fcntl
+        import grp
+        import html
+        import json
+        import os
+        from pathlib import Path
+        import pwd
+        import re
+        import secrets
+        import shutil
+        import socket
+        import sqlite3
+        import subprocess
+        import tarfile
+        import tempfile
+        import time
+        import urllib.request
+
+        BASE = Path('/var/lib/olamide-github-deploy')
+        MARK = '# Managed by olamide-github-deploy v1\n'
+        CFG = {}
+
+        def run(args, cwd=None, env=None, timeout=300):
+            if args[0] == 'git':
+                env = dict(os.environ if env is None else env, GIT_TERMINAL_PROMPT='0')
+            return subprocess.run(args, cwd=cwd, env=env, check=True, capture_output=True,
+                                  text=True, timeout=timeout).stdout.strip()
+
+        def write(path, text, mode=0o600):
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + '.tmp')
+            tmp.write_text(text)
+            tmp.chmod(mode)
+            tmp.replace(path)
+
+        def account(name, data):
+            try:
+                user = pwd.getpwnam(name)
+            except KeyError:
+                run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', name])
+                user = pwd.getpwnam(name)
+            data.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chown(data, user.pw_uid, user.pw_gid)
+            data.chmod(0o700)
+            return user
+
+        def checkout(site):
+            repo = site.get('repo')
+            if not repo:
+                return None
+            if not re.fullmatch(r'olamidebello/[A-Za-z0-9_.-]+', repo):
+                raise ValueError('Repository must be an olamidebello/name identifier')
+            url = 'https://github.com/' + repo + '.git'
+            branch = site.get('branch', 'main')
+            try:
+                refs = run(['git', 'ls-remote', '--heads', url, 'refs/heads/' + branch], timeout=90)
+            except subprocess.CalledProcessError:
+                # Missing/private/inaccessible source remains untouched and is retried later.
+                return None
+            if not refs:
+                return None
+            sha = refs.split()[0]
+            root = BASE / 'sources' / site['domain']
+            if root.exists():
+                if run(['git', 'remote', 'get-url', 'origin'], cwd=root) != url:
+                    raise RuntimeError('Unexpected Git origin; refusing to change checkout')
+                # v1 cloned with --no-checkout. Preserve that incomplete repository and
+                # replace it only when the worktree contains absolutely nothing but .git.
+                if {p.name for p in root.iterdir()} == {'.git'}:
+                    saved = BASE / 'backups' / site['domain'] / ('incomplete-checkout-' + str(time.time_ns()))
+                    saved.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    root.rename(saved)
+            if not root.exists():
+                root.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(prefix='.clone-', dir=root.parent) as staging:
+                    staged = Path(staging) / 'repository'
+                    # Materialize the index and worktree before checking for local edits.
+                    run(['git', 'clone', '--branch', branch, '--single-branch', url, str(staged)], timeout=600)
+                    staged.rename(root)
+            if run(['git', 'status', '--porcelain'], cwd=root):
+                raise RuntimeError('Source checkout has local changes; refusing to overwrite')
+            run(['git', 'fetch', 'origin', 'refs/heads/' + branch], cwd=root, timeout=600)
+            sha = run(['git', 'rev-parse', 'FETCH_HEAD'], cwd=root)
+            run(['git', 'checkout', '--detach', sha], cwd=root)
+            return root, sha
+
+        def export(root, sha, dest):
+            dest.mkdir(parents=True, exist_ok=True, mode=0o755)
+            with tempfile.TemporaryFile() as archive:
+                subprocess.run(['git', 'archive', sha], cwd=root, stdout=archive, check=True)
+                archive.seek(0)
+                with tarfile.open(fileobj=archive) as tf:
+                    # Repositories are executable trusted source, but links must not escape releases.
+                    for member in tf.getmembers():
+                        if member.issym() or member.islnk() or member.name.startswith('/') or '..' in Path(member.name).parts:
+                            raise RuntimeError('Unsafe archive member')
+                    tf.extractall(dest)
+            for path in [dest, *dest.rglob('*')]:
+                path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+
+        def switch(link, target):
+            link = Path(link)
+            if link.exists() and not link.is_symlink():
+                raise RuntimeError('Refusing to replace non-symlink deployment path: ' + str(link))
+            tmp = link.with_name(link.name + '.next')
+            tmp.unlink(missing_ok=True)
+            tmp.symlink_to(target)
+            tmp.replace(link)
+
+        def health(port, route='/'):
+            for attempt in range(15):
+                try:
+                    with urllib.request.urlopen('http://127.0.0.1:' + str(port) + route, timeout=3) as response:
+                        if response.status == 200:
+                            return
+                except Exception:
+                    pass
+                time.sleep(1)
+            raise RuntimeError('Backend readiness failed on port ' + str(port))
+
+        def service_exists(name):
+            return run(['systemctl', 'show', name, '--property=LoadState', '--value']) != 'not-found'
+
+        def backup_sqlite(data, backup):
+            if not data.exists():
+                return
+            backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+            for p in data.rglob('*'):
+                if p.is_symlink():
+                    raise RuntimeError('Symlink in persistent data requires operator review')
+                if p.is_file() and p.suffix not in ('.db', '.sqlite3', '.sqlite') and not p.name.endswith(('-wal', '-shm', '-journal')):
+                    target = backup / p.relative_to(data)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(p, target)
+            for p in data.rglob('*'):
+                if p.is_file() and p.suffix in ('.db', '.sqlite3', '.sqlite'):
+                    target = backup / p.relative_to(data)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with sqlite3.connect(str(p)) as source, sqlite3.connect(str(target)) as output:
+                        source.backup(output)
+
+        def app(site, root, sha):
+            kind, name, port = site['kind'], site['service'], site['port']
+            user_name = site['user']
+            data = Path('/var/lib') / name
+            user = account(user_name, data)
+            release = BASE / 'releases' / name / sha
+            if not release.exists():
+                export(root, sha, release)
+            entry = 'server.py' if kind == 'dating' else 'app.py'
+            if not (release / entry).is_file():
+                raise RuntimeError('Expected application entry point missing')
+            run(['/usr/bin/python3', '-m', 'compileall', '-q', str(release)])
+            base_env = {'PYTHONDONTWRITEBYTECODE': '1', 'PORT': str(port)}
+            if kind == 'store':
+                base_env.update(STORE_DATA=str(data), COOKIE_SECURE='1', BIND='127.0.0.1')
+            elif kind == 'dobhrap':
+                base_env.update(DOBHRAP_DB=str(data / 'dobhrap.db'), DOBHRAP_SECURE_COOKIE='1')
+            else:
+                base_env.update(NEKKED_DB=str(data / 'nekked.sqlite3'), NEKKED_HOST='127.0.0.1',
+                                NEKKED_SECURE_COOKIE='1', NEKKED_ORIGIN='https://' + site['domain'])
+            link = Path('/opt') / (name + '-github-current')
+            old = link.resolve() if link.is_symlink() else None
+            unit = Path('/etc/systemd/system') / (name + '.service')
+            old_unit = unit.read_text() if unit.exists() else None
+            if old_unit and not (old_unit.startswith(MARK) or site.get('adopt_service')):
+                raise RuntimeError('Existing service not managed by this playbook')
+            # Do not take a port used by another application.
+            if not service_exists(name):
+                with socket.socket() as sock:
+                    sock.bind(('127.0.0.1', port))
+            stamp = str(time.time_ns())
+            backup = BASE / 'backups' / site['domain'] / stamp
+            backup.mkdir(parents=True, mode=0o700)
+            if old_unit:
+                write(backup / 'service.unit', old_unit)
+            if service_exists(name):
+                run(['systemctl', 'stop', name])
+            try:
+                backup_sqlite(data, backup / 'data')
+                if kind in ('store', 'dobhrap'):
+                    credentials = BASE / 'credentials' / (name + '.json')
+                    if credentials.exists():
+                        initial = json.loads(credentials.read_text())
+                    else:
+                        initial = {'email': CFG['admin_email'], 'password': secrets.token_urlsafe(30)}
+                        write(credentials, json.dumps(initial, indent=2) + '\n')
+                    env = dict(os.environ, **base_env)
+                    prefix = 'ADMIN_' if kind == 'store' else 'DOBHRAP_ADMIN_'
+                    env[prefix + 'EMAIL'] = initial['email']
+                    env[prefix + 'PASSWORD'] = initial['password']
+                    # Password stays out of command arguments, logs and service unit.
+                    subprocess.run(['/usr/sbin/runuser', '-u', user_name, '--', '/usr/bin/python3', '-c',
+                                    'import app; app.init()'], cwd=release, env=env, check=True,
+                                   capture_output=True, timeout=60)
+                switch(link, release)
+                env_lines = '\n'.join('Environment=' + k + '=' + json.dumps(v) for k, v in base_env.items()
+                                      if True)
+                write(unit, MARK + f'''[Unit]
+        Description=GitHub deployment for {site['domain']}
+        After=network.target
+        [Service]
+        User={user_name}
+        Group={grp.getgrgid(user.pw_gid).gr_name}
+        WorkingDirectory={link}
+        {env_lines}
+        ExecStart=/usr/bin/python3 {link}/{entry}
+        Restart=on-failure
+        RestartSec=3
+        NoNewPrivileges=true
+        PrivateTmp=true
+        ProtectHome=true
+        ProtectSystem=strict
+        ReadWritePaths={data}
+        UMask=0077
+        [Install]
+        WantedBy=multi-user.target
+        ''', 0o644)
+                run(['systemctl', 'daemon-reload'])
+                run(['systemctl', 'enable', '--now', name])
+                health(port, site.get('health', '/'))
+            except Exception:
+                run(['systemctl', 'stop', name])
+                if old:
+                    switch(link, old)
+                if old_unit:
+                    write(unit, old_unit, 0o644)
+                    run(['systemctl', 'daemon-reload'])
+                    run(['systemctl', 'start', name])
+                # Data backup is retained; schema rollback is deliberately not guessed.
+                raise
+            return f'proxy_pass http://127.0.0.1:{port};\nproxy_set_header Host $host;\nproxy_set_header X-Forwarded-Proto $scheme;'
+
+        def panel(site, root, sha):
+            current = Path('/opt/olamidepanel')
+            python = current / 'venv/bin/python'
+            if not python.exists() or not Path('/etc/olamidepanel/database.json').exists():
+                raise RuntimeError('Panel needs its initial MySQL/configuration installation before this updater can run')
+            if not service_exists('olamidepanel'):
+                raise RuntimeError('Existing olamidepanel systemd service required')
+            backup = BASE / 'backups' / site['domain'] / str(time.time_ns())
+            backup.mkdir(parents=True, mode=0o700)
+            run(['systemctl', 'stop', 'olamidepanel'])
+            old = current / 'panel'
+            try:
+                shutil.copytree(old, backup / 'panel')
+                shutil.copy2('/etc/olamidepanel/database.json', backup / 'database.json')
+                if Path('/var/lib/olamidepanel').exists():
+                    shutil.copytree('/var/lib/olamidepanel', backup / 'data', symlinks=True)
+                # Transaction-consistent logical MySQL backup through the existing adapter.
+                dump = '''import sys
+        sys.path.insert(0, '/opt/olamidepanel/panel')
+        import database, pymysql
+        c=pymysql.connect(**database.configuration())
+        with c.cursor() as q:
+         q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+         q.execute('START TRANSACTION WITH CONSISTENT SNAPSHOT')
+         q.execute('SHOW TABLES'); tables=[next(iter(row.values())) for row in q.fetchall()]
+         print('SET FOREIGN_KEY_CHECKS=0;')
+         for name in tables:
+          ident='`'+name.replace('`','``')+'`'
+          q.execute('SHOW CREATE TABLE '+ident); row=q.fetchone()
+          print('DROP TABLE IF EXISTS '+ident+';'); print(row['Create Table']+';')
+          q.execute('SELECT * FROM '+ident)
+          for row in q.fetchall():
+           cols=','.join('`'+k.replace('`','``')+'`' for k in row)
+           print('INSERT INTO '+ident+' ('+cols+') VALUES ('+','.join(c.escape(v) for v in row.values())+');')
+         print('SET FOREIGN_KEY_CHECKS=1;')
+        c.rollback(); c.close()
+        '''
+                with (backup / 'database.sql').open('w') as out:
+                    subprocess.run([str(python), '-c', dump], stdout=out, stderr=subprocess.PIPE, check=True, timeout=600)
+                stage = BASE / 'releases' / 'olamidepanel' / sha
+                if not stage.exists():
+                    export(root, sha, stage)
+                run([str(python), '-m', 'pip', 'install', '-r', str(stage / 'requirements.txt')], timeout=600)
+                run([str(python), '-m', 'compileall', '-q', str(stage / 'panel')])
+                shutil.copytree(stage / 'panel', old, dirs_exist_ok=True)
+                run(['systemctl', 'start', 'olamidepanel'])
+                health(site['port'])
+            except Exception:
+                if (backup / 'panel').exists():
+                    shutil.copytree(backup / 'panel', old, dirs_exist_ok=True)
+                run(['systemctl', 'start', 'olamidepanel'])
+                raise
+            return f"proxy_pass http://127.0.0.1:{site['port']};\nproxy_set_header Host $host;\nproxy_set_header X-Forwarded-Proto $scheme;"
+
+        def browser(site, root, sha):
+            # Build the maintained website; never regenerate the obsolete placeholder.
+            dest = BASE / 'public' / site['domain'] / sha
+            dest.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            with tempfile.TemporaryDirectory(prefix='browser-site-', dir=dest.parent) as temporary:
+                stage = Path(temporary) / 'site'
+                run(['/usr/bin/python3', str(root / 'scripts/build_website.py'),
+                     '--output', str(stage)], cwd=root)
+                required = ['index.html', 'assets/africanbrowser-logo.png',
+                            'assets/africanbrowser-icon.png', 'legal/privacy.html',
+                            'legal/terms.html', 'legal/license.html',
+                            'legal/notices.html', 'legal/copyright.html']
+                for relative in required:
+                    if not (stage / relative).is_file():
+                        raise RuntimeError('Website build missing ' + relative)
+                if 'Download development APK' not in (stage / 'index.html').read_text():
+                    raise RuntimeError('Website build missing download action')
+                shutil.copy2(stage / 'assets/africanbrowser-logo.png', stage / 'logo.png')
+                # Publish dependencies before atomically replacing the homepage.
+                dest.mkdir(parents=True, exist_ok=True, mode=0o755)
+                for directory in ('assets', 'legal'):
+                    shutil.copytree(stage / directory, dest / directory, dirs_exist_ok=True)
+                shutil.copy2(stage / 'logo.png', dest / 'logo.png')
+                for path in [dest, *dest.rglob('*')]:
+                    path.chmod(0o755 if path.is_dir() else 0o644)
+                write(dest / 'index.html', (stage / 'index.html').read_text(), 0o644)
+            return 'root ' + str(dest) + ';\nindex index.html;\ntry_files $uri $uri/ =404;'
+
+        def static_site(site, root, sha):
+            # An explicitly mapped prebuilt static website, never the repository root.
+            relative = site.get('public_dir', 'public')
+            if Path(relative).is_absolute() or '..' in Path(relative).parts or relative in ('', '.'):
+                raise RuntimeError('Set public_dir to a dedicated prebuilt public directory')
+            source = (root / relative).resolve()
+            if not source.is_relative_to(root.resolve()) or not (source / 'index.html').is_file():
+                raise RuntimeError('Static repository needs public_dir/index.html; no build stack is guessed')
+            dest = BASE / 'public' / site['domain'] / sha
+            if not dest.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+                for path in source.rglob('*'):
+                    if path.is_symlink() or path.name.startswith('.') or path.suffix in ('.py', '.php', '.sql', '.env'):
+                        raise RuntimeError('Static public directory contains private or executable server files')
+                shutil.copytree(source, dest)
+                for path in [dest, *dest.rglob('*')]:
+                    path.chmod(0o755 if path.is_dir() else 0o644)
+            return 'root ' + str(dest) + ';\nindex index.html;\ntry_files $uri $uri/ =404;'
+
+        def conflicts(domain, target):
+            dump = run(['nginx', '-T'])
+            chunks = re.split(r'^# configuration file (.+):\s*$', dump, flags=re.M)
+            for i in range(1, len(chunks), 2):
+                path, text = Path(chunks[i].strip()), chunks[i+1]
+                if path.resolve() == target.resolve():
+                    continue
+                text = re.sub(r'#[^\n]*', '', text)
+                names = [x for value in re.findall(r'\bserver_name\s+([^;]+);', text) for x in value.split()]
+                for name in names:
+                    for host in (domain, 'www.' + domain):
+                        match = (name.strip('\"\'').lower() == host or name.startswith('~') or
+                                 name.startswith('*.') and host.endswith(name[1:]) or
+                                 name.startswith('.') and (host == name[1:] or host.endswith(name)) or
+                                 name.endswith('.*') and host.startswith(name[:-1]))
+                        if match:
+                            raise RuntimeError('Conflicting existing Nginx host in ' + str(path))
+
+        def dns_ready(host):
+            import dns.resolver
+            for ns in ('1.1.1.1', '8.8.8.8'):
+                resolver = dns.resolver.Resolver(configure=False)
+                resolver.nameservers = [ns]
+                resolver.lifetime = 5
+                try:
+                    if {str(a) for a in resolver.resolve(host, 'A')} != {CFG['server_ipv4']}:
+                        return False
+                    try:
+                        if list(resolver.resolve(host, 'AAAA')):
+                            return False
+                    except dns.resolver.NoAnswer:
+                        pass
+                except dns.exception.DNSException:
+                    return False
+            return True
+
+        def vhost(site, location):
+            domain = site['domain']
+            target = Path('/etc/nginx/sites-available') / ('olamide-auto-' + domain)
+            conflicts(domain, target)
+            previous = target.read_text() if target.exists() else None
+            if previous and not (previous.startswith(MARK) or previous.startswith('# Managed by olamide-six-domains v1\n')):
+                raise RuntimeError('Unmanaged vhost; replacement refused')
+            cert = Path('/etc/letsencrypt/live') / domain
+            tls = (cert / 'fullchain.pem').exists() and (cert / 'privkey.pem').exists()
+            hosts = [domain]
+            www_ready = dns_ready('www.' + domain)
+            if www_ready:
+                hosts.append('www.' + domain)
+            acme = 'location ^~ /.well-known/acme-challenge/ { root /var/lib/olamide-six-domains/acme; }\n'
+            content = MARK + 'server { listen 80; server_name ' + ' '.join(hosts) + ';\n' + acme
+            if tls:
+                content += 'location / { return 301 https://' + domain + '$request_uri; }\n}\n'
+                content += 'server { listen 443 ssl; server_name ' + ' '.join(hosts) + ';\n'
+                content += 'ssl_certificate ' + str(cert / 'fullchain.pem') + ';\nssl_certificate_key ' + str(cert / 'privkey.pem') + ';\n'
+            content += 'client_max_body_size 25m;\nlocation / {\n' + location + '\n}\n}\n'
+            link = Path('/etc/nginx/sites-enabled') / target.name
+            if link.exists() or link.is_symlink():
+                if not link.is_symlink() or link.resolve() != target.resolve():
+                    raise RuntimeError('Unexpected enabled Nginx file')
+            if previous != content:
+                if previous:
+                    write(BASE / 'backups' / domain / (str(time.time_ns()) + '.nginx'), previous)
+                write(target, content, 0o644)
+            made_link = not link.is_symlink()
+            if made_link:
+                link.symlink_to(target)
+            try:
+                run(['nginx', '-t'])
+                run(['systemctl', 'reload', 'nginx'])
+            except Exception:
+                if previous is not None:
+                    write(target, previous, 0o644)
+                else:
+                    target.unlink(missing_ok=True)
+                if made_link:
+                    link.unlink(missing_ok=True)
+                run(['nginx', '-t'])
+                run(['systemctl', 'reload', 'nginx'])
+                raise
+            if not dns_ready(domain):
+                return {'status': 'deployed_waiting_dns', 'www': 'ready' if www_ready else 'waiting_dns'}
+            # Certbot plugin expands existing certificates and preserves proxy configuration.
+            args = ['certbot', '--nginx', '--non-interactive', '--agree-tos', '--redirect',
+                    '--keep-until-expiring', '--expand', '--cert-name', domain, '-m', CFG['admin_email']]
+            for host in hosts:
+                args.extend(['-d', host])
+            try:
+                run(args, timeout=240)
+                run(['nginx', '-t'])
+                run(['systemctl', 'reload', 'nginx'])
+                # Uses normal public DNS and validates certificate trust and hostname.
+                with urllib.request.urlopen('https://' + domain + '/', timeout=20) as response:
+                    if response.status != 200:
+                        raise RuntimeError('Public HTTPS health failed')
+                return {'status': 'https_ready', 'www': 'ready' if www_ready else 'waiting_dns'}
+            except Exception as exc:
+                return {'status': 'deployed_tls_needs_attention', 'detail': type(exc).__name__,
+                        'www': 'ready' if www_ready else 'waiting_dns'}
+
+        def publish_panel_snapshot(results):
+            panel_data = Path('/var/lib/olamidepanel')
+            try:
+                group_id = grp.getgrnam('olamidepanel').gr_gid
+            except KeyError:
+                return
+            if not panel_data.is_dir():
+                return
+            snapshot = panel_data / 'hosted-domains.json'
+            try:
+                previous = json.loads(snapshot.read_text())
+                rows = {r['domain']: r for r in previous.get('domains', []) if isinstance(r, dict) and 'domain' in r}
+            except (OSError, ValueError, TypeError, KeyError):
+                rows = {}
+            for result in results:
+                name = result['domain']
+                if result['status'] == 'waiting_repository' and name in rows:
+                    # Existing static hosting remains valid; source availability is separate.
+                    row = dict(rows[name], deployment_status='waiting_repository',
+                               deployment_checked_at=result['checked_at'])
+                else:
+                    # Replace obsolete roots rather than merging them into application status.
+                    row = {k: v for k, v in result.items() if k != 'location'}
+                    row['deployment_status'] = 'running' if result.get('application_ready') else result['status']
+                    row['deployment_checked_at'] = result['checked_at']
+                    if result.get('application_ready'):
+                        location = result.get('location', '')
+                        backend = re.search(r'proxy_pass (http://127[.]0[.]0[.]1:[0-9]+);', location)
+                        document = re.search(r'^root ([^;]+);', location)
+                        if backend:
+                            row['backend'] = backend.group(1)
+                        if document:
+                            row['document_root'] = document.group(1)
+                rows[name] = row
+            write(snapshot, json.dumps({'updated_at': int(time.time()), 'domains': list(rows.values())}, indent=2) + '\n', 0o640)
+            os.chown(snapshot, 0, group_id)
+
+        def main():
+            global CFG
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--domain', help='Deploy only this configured domain')
+            args = parser.parse_args()
+            os.umask(0o077)
+            CFG = json.loads(Path('/etc/olamide-github-deploy.json').read_text())
+            if args.domain and not any(site['domain'] == args.domain for site in CFG['sites']):
+                raise SystemExit('Domain is not configured')
+            with (BASE / 'worker.lock').open('w') as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    print('Deployment already running')
+                    return
+                results = []
+                report = BASE / 'status.json'
+                if args.domain and report.exists():
+                    results = [row for row in json.loads(report.read_text()) if row['domain'] != args.domain]
+                for site in CFG['sites']:
+                    if args.domain and site['domain'] != args.domain:
+                        continue
+                    result = {'domain': site['domain'], 'checked_at': int(time.time()), 'repo': site.get('repo')}
+                    try:
+                        target = Path('/etc/nginx/sites-available') / ('olamide-auto-' + site['domain'])
+                        # Check conflicts before stopping applications or updating code.
+                        conflicts(site['domain'], target)
+                        source = checkout(site)
+                        if source is None:
+                            result['status'] = 'waiting_repository'
+                        else:
+                            root, sha = source
+                            result['commit'] = sha
+                            previous_path = BASE / 'status' / (site['domain'] + '.json')
+                            previous = json.loads(previous_path.read_text()) if previous_path.exists() else {}
+                            if site['kind'] != 'browser' and previous.get('commit') == sha and previous.get('application_ready'):
+                                location = previous['location']
+                                if site.get('port'):
+                                    health(site['port'], site.get('health', '/'))
+                            else:
+                                if site['kind'] == 'panel':
+                                    location = panel(site, root, sha)
+                                elif site['kind'] == 'browser':
+                                    location = browser(site, root, sha)
+                                elif site['kind'] == 'static':
+                                    location = static_site(site, root, sha)
+                                else:
+                                    location = app(site, root, sha)
+                            result.update(application_ready=True, location=location)
+                            result.update(vhost(site, location))
+                    except Exception as exc:
+                        # Avoid leaking SQL credentials, process environment or HTTP response bodies.
+                        result.update(status='needs_attention', error=str(exc) if isinstance(exc, (RuntimeError, ValueError)) else type(exc).__name__)
+                    write(BASE / 'status' / (site['domain'] + '.json'), json.dumps(result, indent=2) + '\n', 0o644)
+                    results.append(result)
+                write(BASE / 'status.json', json.dumps(results, indent=2) + '\n', 0o644)
+                publish_panel_snapshot(results)
+                print(json.dumps(results, indent=2))
+
+        if __name__ == '__main__':
+            main()
   - name: Check worker Python syntax
     ansible.builtin.command: python3 -m py_compile /usr/local/sbin/olamide-github-deploy
     changed_when: false
