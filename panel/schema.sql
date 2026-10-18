@@ -180,3 +180,10 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
  checked_at BIGINT NOT NULL, healthy BOOLEAN NOT NULL, action VARCHAR(64) NOT NULL,
  checks TEXT NOT NULL, INDEX watchdog_time(checked_at), INDEX watchdog_domain(domain,id)
  ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS module_jobs(id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ adapter VARCHAR(32) NOT NULL, operation VARCHAR(16) NOT NULL, creator BIGINT NOT NULL,
+ state VARCHAR(24) NOT NULL DEFAULT 'queued', created BIGINT NOT NULL, finished BIGINT,
+ summary VARCHAR(500) NOT NULL DEFAULT '', INDEX module_queue(state,id)) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS module_status(adapter VARCHAR(32) PRIMARY KEY,
+ checked_at BIGINT NOT NULL, last_repair BIGINT NOT NULL DEFAULT 0, state VARCHAR(32) NOT NULL, checks TEXT NOT NULL) ENGINE=InnoDB;

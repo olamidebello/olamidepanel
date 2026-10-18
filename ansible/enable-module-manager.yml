@@ -1,0 +1,135 @@
+---
+- name: Install sequential module audit, prerequisite repair and admin GUI
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    panel_install: /opt/olamidepanel
+  tasks:
+    - name: Require existing panel virtual environment
+      ansible.builtin.stat:
+        path: '{{ panel_install }}/venv/bin/python'
+      register: python
+    - name: Validate existing panel
+      ansible.builtin.assert:
+        that: python.stat.exists
+        fail_msg: Install the MySQL-backed OlamidePanel first.
+    - name: Install fixed system prerequisites
+      ansible.builtin.apt:
+        name: [python3-venv, nginx, curl, ca-certificates]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Create root-owned trusted module source and backups
+      ansible.builtin.file:
+        path: '{{ item }}'
+        owner: root
+        group: root
+        mode: '0755'
+        state: directory
+      loop: [/opt/olamidepanel-module-source, /opt/olamidepanel-module-source/panel, /var/backups/olamidepanel-modules]
+    - name: Stage root-owned backend sources
+      ansible.builtin.copy:
+        src: '{{ item }}'
+        dest: '/opt/olamidepanel-module-source/panel/{{ item | basename }}'
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+        - '{{ playbook_dir }}/../panel/*.py'
+        - '{{ playbook_dir }}/../panel/*.json'
+        - '{{ playbook_dir }}/../panel/*.sql'
+    - name: Stage static GUI
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/static/'
+        dest: /opt/olamidepanel-module-source/panel/static/
+        owner: root
+        group: root
+        mode: '0644'
+        directory_mode: '0755'
+    - name: Stage requirements
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../requirements.txt'
+        dest: /opt/olamidepanel-module-source/requirements.txt
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Install Python prerequisites into existing environment
+      ansible.builtin.pip:
+        requirements: /opt/olamidepanel-module-source/requirements.txt
+        virtualenv: '{{ panel_install }}/venv'
+    - name: Compile trusted source before activation
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -m, compileall, -q, /opt/olamidepanel-module-source/panel]
+      changed_when: false
+    - name: Deploy source and GUI with backups
+      ansible.builtin.copy:
+        src: /opt/olamidepanel-module-source/panel/
+        dest: '{{ panel_install }}/panel/'
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+        backup: true
+      notify: Restart panel
+    - name: Create additive MySQL management tables
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -c, 'import module_manager; module_manager.initialize()']
+        chdir: '{{ panel_install }}/panel'
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      become_user: olamidepanel
+      changed_when: false
+    - name: Install root-only module broker
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/module_runner.py'
+        dest: '{{ panel_install }}/module-runner.py'
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Install module event service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-modules.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Sequential OlamidePanel module audit and prerequisite repair
+          After=network.target mysql.service
+          [Service]
+          Type=oneshot
+          User=root
+          ExecStart={{ panel_install }}/venv/bin/python {{ panel_install }}/module-runner.py
+          Environment=PANEL_DB_CONFIG=/etc/olamidepanel/database.json
+          TimeoutStartSec=1500
+          UMask=0077
+          NoNewPrivileges=true
+          PrivateTmp=true
+    - name: Install recurring module event
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-modules.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Process module operations sequentially and schedule health checks
+          [Timer]
+          OnBootSec=90s
+          OnUnitInactiveSec=20s
+          Unit=olamidepanel-modules.service
+          [Install]
+          WantedBy=timers.target
+    - name: Start recurring module processing
+      ansible.builtin.systemd:
+        name: olamidepanel-modules.timer
+        daemon_reload: true
+        enabled: true
+        state: restarted
+    - name: Apply GUI restart
+      ansible.builtin.meta: flush_handlers
+    - name: Report control location
+      ansible.builtin.debug:
+        msg: Administration -> Module Manager. Existing adapters are checked approximately every 15 minutes; failed prerequisites/source checks can trigger repair at most hourly. Missing feature implementations remain explicitly reported. Stop automation with systemctl disable --now olamidepanel-modules.timer.
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted

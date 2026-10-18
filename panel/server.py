@@ -13,6 +13,7 @@ import storage
 import mfa
 import dns_tools
 import site_controls
+import module_manager
 import hosted_domains
 import watchdog
 
@@ -107,6 +108,9 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == '/api/metrics':
                     usage = shutil.disk_usage(DATA)
                     return self.reply(200, {'disk_total':usage.total,'disk_used':usage.used,'load':os.getloadavg(), 'hostname':os.uname().nodename})
+                if self.path == '/api/module-manager':
+                    if not allowed(u,'users.manage'):return self.reply(403,{'error':'Super-admin access required'})
+                    return self.reply(200,module_manager.report(u,db))
                 if self.path == '/api/watchdog':
                     if not allowed(u, 'users.manage'): return self.reply(403, {'error':'Super-admin access required'})
                     return self.reply(200, watchdog.report(u, db))
@@ -161,6 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/module-manager':return self.reply(202,module_manager.queue(u,body,db))
             if self.path=='/api/dns/lookup':return self.reply(200,dns_tools.lookup(body))
             if self.path=='/api/mfa':
                 with db() as con:row=con.execute('SELECT salt,password FROM users WHERE id=?',(u['id'],)).fetchone()

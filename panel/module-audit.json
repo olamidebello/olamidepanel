@@ -1422,5 +1422,13 @@
     "source": "panel/watchdog.py; deploy/watchdog.py; panel/schema.sql",
     "api": "GET /api/watchdog",
     "detail": "Super-admin health, event history, 24-hour totals and JSON reports; bounded recovery for explicitly configured backends. Local HTTPS does not verify public DNS. Requires watchdog Ansible installation."
+  },
+  {
+    "category": "Administration",
+    "name": "Module Manager",
+    "status": "implemented",
+    "source": "panel/module_manager.py; deploy/module_runner.py",
+    "api": "/api/module-manager",
+    "detail": "Super-admin sequential prerequisite/source checks and repair of fixed existing adapters. Displays all tool coverage; cannot generate absent modules or vendor credentials."
   }
 ]
