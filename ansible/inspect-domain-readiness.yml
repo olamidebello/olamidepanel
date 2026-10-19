@@ -1,0 +1,63 @@
+---
+- name: Inspect each hosted domain in sequence after provisioning
+  hosts: panel_servers
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    hosting_require_ready: false
+    hosting_domain_filter: []
+  tasks:
+    - name: Install DNS inspection utility
+      ansible.builtin.apt:
+        name: dnsutils
+        state: present
+    - name: Export authoritative domain inventory
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/export_domain_accounts.py]
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      changed_when: false
+      check_mode: false
+      register: sequential_inventory
+    - name: Select active domains and reset this run report
+      ansible.builtin.set_fact:
+        sequential_domains: '{{ sequential_inventory.stdout | from_json | selectattr("active") | map(attribute="domain") | unique | list }}'
+        sequential_results: []
+    - name: Validate requested domain selection before checks
+      ansible.builtin.assert:
+        that:
+          - hosting_domain_filter is sequence
+          - hosting_domain_filter is not string
+          - hosting_domain_filter | difference(sequential_domains) | length == 0
+        fail_msg: Every selected domain must be an active domain in the panel.
+    - name: Create private per-domain report directory
+      ansible.builtin.file:
+        path: /etc/olamidepanel/domain-readiness
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Complete readiness inspection for one domain before the next
+      ansible.builtin.include_tasks: tasks/domain-readiness.yml
+      loop: '{{ sequential_domains }}'
+      loop_control:
+        loop_var: hosting_domain
+        label: '{{ hosting_domain }}'
+      when: hosting_domain_filter | length == 0 or hosting_domain in hosting_domain_filter
+    - name: Save aggregate readiness report
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/domain-readiness.json
+        content: '{{ {"domains": sequential_results, "coverage_report": "/etc/olamidepanel/domain-feature-report.json", "external_delivery_tested": false} | to_nice_json }}'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Report domains requiring attention
+      ansible.builtin.debug:
+        msg: '{{ sequential_results | rejectattr("ready") | map(attribute="domain") | list }}'
+    - name: Optionally fail after saving every domain result
+      ansible.builtin.assert:
+        that: sequential_results | rejectattr('ready') | list | length == 0
+        fail_msg: Inspect /etc/olamidepanel/domain-readiness.json for DNS, website and email prerequisites.
+      when: hosting_require_ready | bool

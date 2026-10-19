@@ -88,3 +88,63 @@ live checks as passed. No DNS records are automatically replaced.
 
 This entrypoint does not implement webmail, aliases, database provisioning, WAF,
 quotas, or the other gaps listed above, and does not install licensed cPanel.
+
+## Automatic deployment with mail prerequisite bootstrap
+
+On the server, prepare the private configuration once:
+
+```sh
+cd /opt/olamidepanel/repo
+git pull --ff-only origin main
+install -m 600 ansible/hosting-bootstrap.example.yml /etc/olamidepanel/hosting-bootstrap.yml
+nano /etc/olamidepanel/hosting-bootstrap.yml
+sudo bash scripts/deploy-hosting.sh
+```
+
+For subsequent deployments run only `sudo bash scripts/deploy-hosting.sh`. It pulls
+main with fast-forward protection, prevents overlapping wrapper runs, installs
+Ansible when absent and executes `ansible/deploy-hosting-automatic.yml`. Do not copy
+the example over a configured policy on subsequent runs. Configure the real mail
+hostname and ACME email before the first run. The existing panel and its Python
+runtime/database configuration must already be installed. The wrapper does not
+upgrade the panel application itself or run unrelated hosted-site build adapters.
+
+The workflow retains existing mailbox policy and creates `admin@domain` by default
+for active panel domains and approved extras. Change `mail_bootstrap_localparts`
+to select the mailbox names. Passwords use random 32-character values, SHA512-CRYPT
+hashes, and persistent root-only credentials in
+`/etc/olamidepanel/mail-bootstrap-credentials.json`. It never prints passwords.
+Existing mailbox hashes take precedence over saved generated credentials. Removing
+a localpart from the bootstrap list does not disable an existing mailbox; use the
+mailbox policy lifecycle separately. The recurring email reconciler keeps the
+resulting mailbox inventory, but creating mailboxes for newly added domains requires
+rerunning this wrapper.
+
+Forward DNS supports `manual` (default) or authenticated `rfc2136`. Configure the
+authoritative server IP and a root-only TSIG key file for RFC2136. These credentials
+must be supplied by the DNS operator; registrar-specific REST APIs are not included.
+It creates missing A, MX, SPF, DMARC and DKIM records and stops on conflicting
+existing records. Existing unrelated apex TXT values are retained. DMARC begins
+with monitoring policy `p=none`. Inspect the generated DNS plans and preserve other
+legitimate senders when migrating SPF/MX. Changes use server-side prerequisites and
+never delete records. DNS updates run in each phase's domain order.
+
+PTR uses separate `mail_reverse_dns` authorization for the reverse zone. Most server
+providers manage this outside your forward DNS account. If RFC2136 access is
+unavailable, the PTR plan remains pending for the provider's console/support team;
+the script cannot manufacture provider authorization.
+
+Mail A/AAAA must resolve exclusively to the configured server IPv4 before TLS
+issuance. The playbook creates an HTTP-only mail-host ACME route when the hostname
+is absent from Nginx, checks its challenge response and runs Certbot webroot mode.
+Existing hostname routing is retained; if it does not serve the configured ACME
+webroot, the probe stops deployment and the operator must add that challenge route.
+Port 80 must be publicly reachable; firewalls, provider SMTP restrictions and DNS
+propagation are not bypassed. Certbot's timer renews certificates; the existing mail
+playbook installs a validated Postfix/Dovecot reload hook. The bootstrap refuses
+check mode because credential issuance and external DNS must be inspected live.
+
+Pending DNS/PTR reports are root-only `mail-bootstrap-*-report.json` files under
+`/etc/olamidepanel/`. Check those alongside domain readiness reports. Pending manual
+DNS does not mean delivery works. External mailbox authentication and delivery tests,
+full cPanel feature implementation, webmail and aliases remain outside this workflow.

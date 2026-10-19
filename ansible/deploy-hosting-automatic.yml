@@ -1,0 +1,18 @@
+---
+- import_playbook: prepare-domain-mail.yml
+- import_playbook: deploy-domain-hosting-suite.yml
+- name: Publish per-domain mail DNS and reverse DNS after generating DKIM keys
+  hosts: panel_servers
+  become: true
+  serial: 1
+  tasks:
+    - name: Provision DNS phase or save provider instructions
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, '{{ item }}', --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+      loop: [domain-dns, ptr]
+      register: bootstrap_dns
+      changed_when: (bootstrap_dns.stdout | from_json).mode == 'rfc2136'
+    - name: Report outstanding provider requirements
+      ansible.builtin.debug:
+        msg: 'Inspect /etc/olamidepanel/mail-bootstrap-*-report.json for pending DNS/PTR. Generated credentials are root-only in mail-bootstrap-credentials.json. Public delivery and full cPanel parity are not verified.'
+- import_playbook: inspect-domain-readiness.yml

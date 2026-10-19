@@ -1,0 +1,26 @@
+# Copy to /etc/olamidepanel/hosting-bootstrap.yml, chmod 600, edit.
+# Existing Debian 12 OlamidePanel installation only.
+panel_hostname: hosting.dobhrap.com
+panel_public_ipv4: 181.214.149.146
+panel_acme_email: REPLACE_WITH_YOUR_EMAIL
+mail_hostname: mail.REPLACE_WITH_YOUR_DOMAIN.com
+hosting_enable_email: true
+hosting_enable_domain_ssh: true
+hosting_require_complete: false
+hosting_require_ready: false
+mail_selector: panel
+mail_extra_domains: []
+mail_bootstrap_localparts: [admin]
+# Existing accounts are retained; generated passwords are persistent and root-only.
+mail_accounts: []
+domain_owner_ssh: {}
+# manual writes plans; rfc2136 publishes via authorized TSIG dynamic DNS.
+mail_dns:
+  mode: manual
+  # server: 192.0.2.53  # authoritative DNS server IP
+  # key_file: /etc/olamidepanel/forward-dns.key  # chmod 600
+# Separate authorization is required for the provider's reverse zone.
+mail_reverse_dns:
+  mode: manual
+  # server: 192.0.2.54
+  # key_file: /etc/olamidepanel/reverse-dns.key

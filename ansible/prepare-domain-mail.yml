@@ -1,0 +1,153 @@
+---
+- name: Bootstrap mailboxes, DNS address and trusted mail TLS
+  hosts: panel_servers
+  become: true
+  serial: 1
+  tasks:
+    - name: Validate required operator configuration
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - mail_hostname | default('') is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          - panel_acme_email | default('') is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
+          - hosting_enable_email | default(true) | bool
+        fail_msg: Supply the bootstrap policy. This installer requires a live run and email enabled.
+    - name: Install bootstrap prerequisites
+      ansible.builtin.apt:
+        name: [openssl, certbot, nginx, dnsutils, bind9-dnsutils]
+        state: present
+        update_cache: true
+    - name: Create protected bootstrap directory
+      ansible.builtin.file:
+        path: /etc/olamidepanel
+        state: directory
+        mode: '0755'
+    - name: Read active hosted domains
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/export_domain_accounts.py]
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      register: bootstrap_inventory
+      changed_when: false
+    - name: Save private inventory snapshot
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/mail-bootstrap-inventory.json
+        content: '{{ bootstrap_inventory.stdout }}'
+        mode: '0600'
+    - name: Inspect prior authoritative mailbox policy
+      ansible.builtin.stat:
+        path: /etc/olamidepanel/mail-policy.json
+      register: prior_mail_policy
+    - name: Read existing mailbox policy without logging credentials
+      ansible.builtin.slurp:
+        src: /etc/olamidepanel/mail-policy.json
+      register: prior_mail_data
+      when: prior_mail_policy.stat.exists
+      no_log: true
+    - name: Save complete bootstrap policy including retained accounts
+      ansible.builtin.copy:
+        dest: /etc/olamidepanel/mail-bootstrap-policy.json
+        mode: '0600'
+        content: >-
+          {{ {'mail_hostname': mail_hostname, 'panel_public_ipv4': panel_public_ipv4,
+          'mail_selector': mail_selector | default('panel'),
+          'mail_extra_domains': mail_extra_domains | default([]),
+          'mail_bootstrap_localparts': mail_bootstrap_localparts | default(['admin']),
+          'mail_accounts': (((prior_mail_data.content | b64decode | from_json).mail_accounts | default([])) if prior_mail_policy.stat.exists else []) + (mail_accounts | default([])),
+          'mail_dns': mail_dns | default({'mode': 'manual'}),
+          'mail_reverse_dns': mail_reverse_dns | default({'mode': 'manual'})} | to_nice_json }}
+      no_log: true
+    - name: Generate persistent random mailbox credentials without printing them
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, accounts, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+      no_log: true
+    - name: Read generated mailbox hashes from target server
+      ansible.builtin.slurp:
+        src: /etc/olamidepanel/mail-bootstrap-accounts.json
+      register: bootstrap_account_data
+      no_log: true
+    - name: Load generated and existing mailbox hashes into deployment
+      ansible.builtin.set_fact:
+        mail_accounts: '{{ (bootstrap_account_data.content | b64decode | from_json).mail_accounts }}'
+      no_log: true
+    - name: Provision mail hostname A record or write pending DNS plan
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, address, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+      register: bootstrap_address
+      changed_when: (bootstrap_address.stdout | from_json).mode == 'rfc2136'
+    - name: Require public mail address before certificate issuance
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, -c, 'import socket,sys; a={r[4][0] for r in socket.getaddrinfo(sys.argv[1],80,type=socket.SOCK_STREAM)}; assert a == {sys.argv[2]}, "Mail A/AAAA records must resolve exclusively to the configured server IPv4"', '{{ mail_hostname }}', '{{ panel_public_ipv4 }}']
+      changed_when: false
+      register: public_mail_address
+      retries: 12
+      delay: 5
+      until: public_mail_address.rc == 0
+    - name: Create ACME webroot
+      ansible.builtin.file:
+        path: /var/www/olamidepanel-mail-acme/.well-known/acme-challenge
+        state: directory
+        mode: '0755'
+    - name: Inspect current Nginx hostname routing
+      ansible.builtin.command: /usr/sbin/nginx -T
+      register: bootstrap_nginx
+      changed_when: false
+    - name: Add dedicated HTTP challenge host only when hostname is absent
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/olamidepanel-mail-acme.conf
+        force: false
+        mode: '0644'
+        content: |
+          # Managed by OlamidePanel mail bootstrap
+          server {
+              listen 80;
+              server_name {{ mail_hostname }};
+              root /var/www/olamidepanel-mail-acme;
+              location /.well-known/acme-challenge/ { try_files $uri =404; }
+              location / { return 404; }
+          }
+      when: mail_hostname not in bootstrap_nginx.stdout
+    - name: Validate Nginx configuration
+      ansible.builtin.command: /usr/sbin/nginx -t
+      changed_when: false
+    - name: Enable Nginx and load validated challenge route
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: reloaded
+    - name: Create random HTTP challenge routing probe
+      ansible.builtin.set_fact:
+        bootstrap_probe: '{{ lookup("password", "/dev/null", length=32, chars=["ascii_letters", "digits"]) }}'
+    - name: Verify HTTP challenge is publicly reachable
+      block:
+        - name: Write one-time probe file
+          ansible.builtin.copy:
+            dest: '/var/www/olamidepanel-mail-acme/.well-known/acme-challenge/{{ bootstrap_probe }}'
+            content: '{{ bootstrap_probe }}'
+            mode: '0644'
+        - name: Verify expected public challenge response
+          ansible.builtin.uri:
+            url: 'http://{{ mail_hostname }}/.well-known/acme-challenge/{{ bootstrap_probe }}'
+            return_content: true
+            follow_redirects: none
+            use_proxy: false
+          register: bootstrap_probe_response
+          failed_when: bootstrap_probe_response.status != 200 or bootstrap_probe_response.content != bootstrap_probe
+      always:
+        - name: Remove one-time probe
+          ansible.builtin.file:
+            path: '/var/www/olamidepanel-mail-acme/.well-known/acme-challenge/{{ bootstrap_probe }}'
+            state: absent
+    - name: Obtain or retain trusted mail certificate
+      ansible.builtin.command:
+        argv: [certbot, certonly, --webroot, -w, /var/www/olamidepanel-mail-acme, --non-interactive, --agree-tos, --email, '{{ panel_acme_email }}', --cert-name, '{{ mail_hostname }}', -d, '{{ mail_hostname }}', --keep-until-expiring]
+      register: bootstrap_certificate
+      changed_when: "'not yet due for renewal' not in bootstrap_certificate.stdout"
+    - name: Enable automatic certificate renewal
+      ansible.builtin.systemd:
+        name: certbot.timer
+        enabled: true
+        state: started
