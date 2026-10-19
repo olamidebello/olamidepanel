@@ -1,0 +1,73 @@
+---
+- name: Validate DNS provider configuration
+  ansible.builtin.assert:
+    that:
+      - dns_provider == 'cloudflare'
+      - dns_zone_id is match('^[a-fA-F0-9]{32}$')
+      - dns_api_token | length > 0
+      - dns_ipv4 is match('^(?:[0-9]{1,3}[.]){3}[0-9]{1,3}$')
+    fail_msg: Set dns_provider=cloudflare, CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN for the authoritative zone. Other DNS providers require their own integration.
+  no_log: true
+
+- name: Read exact-name DNS records
+  ansible.builtin.uri:
+    url: 'https://api.cloudflare.com/client/v4/zones/{{ dns_zone_id }}/dns_records?name={{ domain | urlencode }}&per_page=100'
+    headers:
+      Authorization: 'Bearer {{ dns_api_token }}'
+    return_content: true
+    timeout: 30
+  register: dns_records
+  no_log: true
+
+- name: Check record conflicts without modifying unrelated records
+  ansible.builtin.assert:
+    that:
+      - dns_records.json.success
+      - dns_records.json.result | selectattr('type', 'equalto', 'CNAME') | list | length == 0
+      - dns_records.json.result | selectattr('type', 'equalto', 'NS') | list | length == 0
+      - dns_records.json.result | selectattr('type', 'equalto', 'AAAA') | list | length == 0
+      - dns_records.json.result | selectattr('type', 'equalto', 'A') | list | length <= 1
+    fail_msg: DNS API failed or this hostname has conflicting CNAME, NS, AAAA or multiple A records. Resolve these explicitly before provisioning.
+
+- name: Select existing A record
+  ansible.builtin.set_fact:
+    dns_a_records: "{{ dns_records.json.result | selectattr('type', 'equalto', 'A') | list }}"
+
+- name: Create or update the hostname A record
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ dns_zone_id }}/dns_records{{ '/' + dns_a_records[0].id if dns_a_records | length else '' }}"
+    method: "{{ 'PUT' if dns_a_records | length else 'POST' }}"
+    headers:
+      Authorization: 'Bearer {{ dns_api_token }}'
+    body_format: json
+    body:
+      type: A
+      name: '{{ domain }}'
+      content: '{{ dns_ipv4 }}'
+      ttl: 300
+      proxied: false
+    status_code: [200]
+    timeout: 30
+  register: dns_write
+  when: dns_a_records | length == 0 or dns_a_records[0].content != dns_ipv4 or dns_a_records[0].proxied or dns_a_records[0].ttl != 300
+  changed_when: true
+  failed_when: not dns_write.json.success
+  no_log: true
+
+- name: Wait for two public DNS resolvers to return the server IPv4
+  ansible.builtin.uri:
+    url: '{{ item }}?name={{ domain | urlencode }}&type=A'
+    headers:
+      Accept: application/dns-json
+    return_content: true
+    timeout: 15
+  register: dns_public_check
+  until: >-
+    dns_public_check.status | default(0) == 200 and
+    dns_public_check.json.Status | default(1) == 0 and
+    (dns_public_check.json.Answer | default([]) | selectattr('type', 'equalto', 1) | map(attribute='data') | list | sort) == [dns_ipv4]
+  retries: 30
+  delay: 10
+  loop:
+    - https://dns.google/resolve
+    - https://cloudflare-dns.com/dns-query
