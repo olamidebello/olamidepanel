@@ -41,6 +41,8 @@ def render(source, destination, country):
         text = page.read_text().replace('Nigerian', name).replace('Nigeria', name)
         text = text.replace('WAT · UTC+1', 'Location local time').replace('Lagos', country['cities'][0][0]).replace('NiMet', 'your national meteorological service')
         text = text.replace('From the coast to the savannah', 'Across ' + name)
+        if page.name == "index.html":
+            text = text.replace("</body>", '<p style="padding:20px;text-align:center"><a href="https://africaweather.africandroid.world/download.html">Download Africa Weather for Android</a> · <a href="https://africaweather.africandroid.world/">All Africa forecasts</a></p></body>')
         page.write_text(text)
 
 

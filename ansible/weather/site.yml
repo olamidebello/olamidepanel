@@ -101,7 +101,7 @@
       ansible.builtin.command:
         argv: [python3, -c, 'import socket,sys; assert {r[4][0] for r in socket.getaddrinfo(sys.argv[1],443)} == {sys.argv[2]}, "DNS A/AAAA does not exclusively point to this IPv4"', '{{ domain }}', '{{ dns_ipv4 }}']
       changed_when: false
-      when: dns_provider == 'manual'
+      when: dns_provider in ['manual', 'namecheap']
     - name: Obtain HTTPS certificate
       ansible.builtin.command:
         argv: [certbot, --nginx, --non-interactive, --agree-tos, --redirect, --keep-until-expiring, --cert-name, '{{ domain }}', --email, '{{ tls_email }}', -d, '{{ domain }}']

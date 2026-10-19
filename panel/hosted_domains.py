@@ -59,7 +59,7 @@ WEATHER_DOMAINS = {'weatheralgeria.africandroid.world': 'Algeria',
  'weatherzambia.africandroid.world': 'Zambia',
  'weatherzimbabwe.africandroid.world': 'Zimbabwe',
  'weatherwesternsahara.africandroid.world': 'Western Sahara'}
-OPERATOR_DOMAINS = ('prod.dobhrap.com', 'sip.dobhrap.com', 'justisolve.com', 'africanappsstore.space', 'olamidepanel.com', 'nekkeddating.com', 'olamideolatayobello.com', 'africanbrowser.com', 'dobhrap.com', 'aicourtsystem.com', 'africancreativity.io', 'africandroid.world', 'africandroid.space', 'olamidemedical.health', 'weathernigeria.africandroid.world') + tuple(WEATHER_DOMAINS)
+OPERATOR_DOMAINS = ('africaweather.africandroid.world', 'prod.dobhrap.com', 'sip.dobhrap.com', 'justisolve.com', 'africanappsstore.space', 'olamidepanel.com', 'nekkeddating.com', 'olamideolatayobello.com', 'africanbrowser.com', 'dobhrap.com', 'aicourtsystem.com', 'africancreativity.io', 'africandroid.world', 'africandroid.space', 'olamidemedical.health', 'weathernigeria.africandroid.world') + tuple(WEATHER_DOMAINS)
 
 DOMAIN = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 

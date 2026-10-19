@@ -1,0 +1,138 @@
+---
+- name: Provision Africa Weather directory and Namecheap DNS
+  hosts: all
+  become: true
+  vars:
+    domain: africaweather.africandroid.world
+    hub_root: /opt/africaweather
+    dns_ipv4: 181.214.149.146
+    tls_email: "{{ lookup('env', 'WEATHER_TLS_EMAIL') }}"
+    provision_namecheap: true
+    namecheap_all_weather: true
+    countries: "{{ lookup('file', playbook_dir + '/../deploy/africaweather/countries.json') | from_json }}"
+    namecheap_names: "{{ ['africaweather'] + (countries | map(attribute='slug') | map('regex_replace', '^', 'weather') | list if namecheap_all_weather else []) }}"
+  tasks:
+    - name: Validate email and installation settings
+      ansible.builtin.assert:
+        that:
+          - tls_email is match('^[^ @]+@[^ @]+[.][^ @]+$')
+          - hub_root == '/opt/africaweather'
+    - name: Require existing Olamidepanel group
+      ansible.builtin.getent:
+        database: group
+        key: olamidepanel
+    - name: Install dependencies
+      ansible.builtin.apt:
+        name: [python3, nginx, certbot, python3-certbot-nginx, ca-certificates]
+        state: present
+        update_cache: true
+    - name: Create service user
+      ansible.builtin.user:
+        name: africaweather
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+    - name: Install directory and legal pages
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/africaweather/'
+        dest: '{{ hub_root }}/'
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install status exporter
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/weather/status.py'
+        dest: '{{ hub_root }}/status.py'
+        mode: '0644'
+    - name: Configure service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/africaweather.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Africa Weather directory
+          After=network-online.target
+          [Service]
+          User=africaweather
+          WorkingDirectory={{ hub_root }}
+          ExecStart=/usr/bin/python3 {{ hub_root }}/server.py
+          Environment=PORT=18999
+          Restart=on-failure
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          [Install]
+          WantedBy=multi-user.target
+    - name: Start directory
+      ansible.builtin.systemd:
+        name: africaweather
+        state: restarted
+        enabled: true
+        daemon_reload: true
+    - name: Provision DNS for directory and all requested country names
+      ansible.builtin.include_tasks: weather/namecheap.yml
+      when: provision_namecheap | bool
+    - name: Wait for DNS to exclusively resolve to this server
+      ansible.builtin.command:
+        argv: [python3, -c, 'import socket,sys; assert {r[4][0] for r in socket.getaddrinfo(sys.argv[1],443)} == {sys.argv[2]}', '{{ domain }}', '{{ dns_ipv4 }}']
+      register: hub_dns
+      until: hub_dns.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+    - name: Inspect existing hub certificate
+      ansible.builtin.stat:
+        path: '/etc/letsencrypt/live/{{ domain }}/fullchain.pem'
+      register: edition_certificate
+    - name: Set proxy template settings
+      ansible.builtin.set_fact:
+        edition_port: 18999
+        weather_certificate_name: '{{ domain }}'
+    - name: Install nginx proxy preserving existing TLS
+      ansible.builtin.template:
+        src: weather/nginx.conf.j2
+        dest: /etc/nginx/sites-available/africaweather
+        mode: '0644'
+        backup: true
+    - name: Enable proxy
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/africaweather
+        dest: /etc/nginx/sites-enabled/africaweather
+        state: link
+    - name: Validate nginx
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+        enabled: true
+    - name: Issue or renew certificate
+      ansible.builtin.command:
+        argv: [certbot, --nginx, --non-interactive, --agree-tos, --redirect, --keep-until-expiring, --email, '{{ tls_email }}', -d, '{{ domain }}']
+      changed_when: true
+    - name: Enable certificate renewal
+      ansible.builtin.systemd:
+        name: certbot.timer
+        state: started
+        enabled: true
+    - name: Verify public directory and legal pages
+      ansible.builtin.uri:
+        url: 'https://{{ domain }}/{{ item }}'
+        status_code: 200
+        validate_certs: true
+      loop: ['', terms.html, privacy.html, copyright.html, download.html, countries.json]
+    - name: Write verified panel report
+      ansible.builtin.copy:
+        dest: '{{ hub_root }}/hub-status.json'
+        mode: '0640'
+        content: "{{ {'domain': domain, 'status': 'https_ready', 'deployment_status': 'https_ready', 'document_root': hub_root, 'configuration': '/etc/nginx/sites-available/africaweather', 'backend': 'http://127.0.0.1:18999', 'repo': 'olamidebello/olamidepanel', 'checked_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}"
+    - name: Register verified directory in Hosting Domains GUI
+      ansible.builtin.command:
+        argv: [python3, '{{ hub_root }}/status.py', '{{ hub_root }}/hub-status.json']
+      changed_when: true
+    - name: Add mobile download and directory link to installed country editions
+      ansible.builtin.command:
+        argv: [python3, '{{ hub_root }}/install_links.py']
+      changed_when: true

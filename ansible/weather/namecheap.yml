@@ -1,0 +1,13 @@
+---
+- name: Install Namecheap DNS adapter
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deploy/weather/namecheap.py"
+    dest: /usr/local/lib/olamide-namecheap.py
+    mode: "0700"
+
+- name: Merge Namecheap records while preserving existing DNS
+  ansible.builtin.command:
+    argv: [python3, /usr/local/lib/olamide-namecheap.py]
+  args:
+    stdin: "{{ {'ApiUser': lookup('env','NAMECHEAP_API_USER'), 'ApiKey': lookup('env','NAMECHEAP_API_KEY'), 'UserName': lookup('env','NAMECHEAP_USERNAME') or lookup('env','NAMECHEAP_API_USER'), 'ClientIp': lookup('env','NAMECHEAP_CLIENT_IP'), 'names': namecheap_names, 'address': dns_ipv4} | to_json }}"
+  no_log: true
