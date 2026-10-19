@@ -21,3 +21,19 @@ Country hosting remains the existing `ansible/provision-africa-weather.yml`, now
 The shared Africa Weather Android development app opens the hub and allows navigating to country editions. GitHub Actions builds and signature-checks the APK when mobile source is pushed to main, and publishes `AfricaWeather.apk` with SHA-256. Every download section resolves an actual release asset before enabling the APK link. This is a debug-signed development download; it is not a Play Store release. Android 6+ and internet are required.
 
 The hub playbook verifies HTTPS pages and then exports its status into Olamidepanel Hosting Domains. It does not mark country DNS or hosting as verified merely because a link exists. Terms, privacy and copyright reflect the implemented directory behavior; update the privacy notice when tracking or advertising is introduced. Verify hosting log retention and the operator's public contact route before launch. Weather provider commercial licensing must match actual usage; country services currently inherit the existing provider configuration.
+
+## Forecast landing page and preferred country
+
+The directory now displays current conditions, highs/lows, rain probability and wind for each featured city, with a seven-day forecast dialog. All 55 unique destinations have country-edition links. Celsius/Fahrenheit, search, retry and refresh controls are included. The gateway prefers country-edition data and falls back to Open-Meteo for the same city when an edition is unavailable. Responses are cached for ten minutes and upstream concurrency is bounded. Provider usage/licensing must match deployment requirements.
+
+The page and download page both include a preferred-country selector saved in browser local storage. The chosen card moves first on the landing page. Clearing the selector removes the stored preference. The download button is enabled only when GitHub returns a published AfricaWeather.apk release asset; SHA-256 is linked when present. Browser preference is not transferred to a newly installed app. The Android app has a native country selector populated from the same 55-country catalog and saves the chosen country locally. New mobile-source pushes trigger the existing Android build workflow. Until a new build succeeds, downloads can still point to an earlier published APK.
+
+Update an already provisioned hub on the hosting server:
+
+```bash
+cd /opt/olamidepanel-source
+git pull --ff-only origin main
+ansible-playbook -i localhost, -c local ansible/update-africaweather-landing.yml
+```
+
+The update playbook backs up changed files, restarts the hub when needed, and verifies the health endpoint and public HTTPS page. It does not change DNS or certificates. First-time installation continues to use `provision-africaweather-hub.yml`. Frontend validation includes download/preference checks via `node tests/test_weather_download.cjs`; backend forecast tests use `python3 -m unittest discover -s tests -p test_africaweather_landing.py`.

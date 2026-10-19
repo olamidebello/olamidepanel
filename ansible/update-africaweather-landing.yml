@@ -1,0 +1,43 @@
+---
+- name: Update Africa Weather forecast landing page
+  hosts: all
+  become: true
+  tasks:
+    - name: Require existing hub service
+      ansible.builtin.stat:
+        path: /etc/systemd/system/africaweather.service
+      register: hub_service
+    - name: Verify hub was provisioned
+      ansible.builtin.assert:
+        that: hub_service.stat.exists
+        fail_msg: Provision the hub first using ansible/provision-africaweather-hub.yml.
+    - name: Install forecast landing page assets
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/africaweather/{{ item }}'
+        dest: '/opt/africaweather/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [index.html, style.css, app.js, server.py, countries.json, privacy.html, download.html, download.js]
+      notify: Restart Africa Weather
+    - name: Activate updated application
+      ansible.builtin.meta: flush_handlers
+    - name: Verify local application
+      ansible.builtin.uri:
+        url: http://127.0.0.1:18999/api/health
+        status_code: 200
+      register: hub_health
+      retries: 5
+      delay: 2
+      until: hub_health.status == 200
+    - name: Verify public HTTPS landing page
+      ansible.builtin.uri:
+        url: https://africaweather.africandroid.world/
+        status_code: 200
+        validate_certs: true
+  handlers:
+    - name: Restart Africa Weather
+      ansible.builtin.systemd:
+        name: africaweather
+        state: restarted
