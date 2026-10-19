@@ -111,3 +111,30 @@ it restores edition files and services, regenerates managed nginx configuration,
 repairs configured DNS, reuses/renews certificates and verifies real forecasts.
 Failures remain visible individually in Hosting Domains. It is a manually invoked
 repair run, not a background timer, and cannot resolve missing external credentials.
+
+## Global nginx hash failure
+
+Long country hostnames may exceed Debian nginx's default server-name hash bucket.
+The provisioning playbook now repairs and validates global nginx configuration
+once before the edition loop. It raises the bucket to at least 256 and the maximum
+hash size to at least 8192; larger existing values are retained. It also moves only
+byte-identical redundant files/aliases from `sites-enabled` into a timestamped
+backup under `/var/backups/olamide-weather/nginx`. Distinct virtual hosts that claim
+the same name remain untouched, with their warnings reported. Backups and moved
+aliases are restored if `nginx -t` fails. No reload happens on a failed test.
+
+For the reported `could not build server_names_hash` failure, stop any older
+provisioning run first, pull the updated source, then run:
+
+```bash
+cd /opt/olamide-weather-deploy
+git pull --ff-only origin main
+ansible-playbook -i localhost, -c local ansible/repair-weather-nginx.yml
+ansible-playbook -i localhost, -c local ansible/repair-africa-weather.yml
+```
+
+The first playbook requires no DNS credentials or certificate email. It validates
+and starts/reloads nginx. The second retries country provisioning. Existing
+backend processes may already be healthy despite the previous global nginx test
+failures. Remaining duplicate-name warnings require comparison of the distinct
+virtual hosts; they are separate from the fatal hash-size error.

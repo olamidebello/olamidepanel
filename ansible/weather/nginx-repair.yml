@@ -1,0 +1,12 @@
+---
+- name: Repair global nginx hostname capacity and identical enabled aliases
+  ansible.builtin.script:
+    cmd: '{{ playbook_dir }}/../deploy/weather/nginx_repair.py'
+    executable: python3
+  register: weather_nginx_repair
+  changed_when: weather_nginx_repair.rc == 0 and (weather_nginx_repair.stdout | from_json).changed
+  when: not ansible_check_mode
+- name: Report remaining nginx warnings without disabling distinct configurations
+  ansible.builtin.debug:
+    msg: '{{ (weather_nginx_repair.stdout | from_json).warnings }}'
+  when: not ansible_check_mode

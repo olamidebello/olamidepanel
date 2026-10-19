@@ -1,0 +1,17 @@
+---
+- name: Repair global nginx configuration before country deployment
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_tasks: weather/nginx-repair.yml
+    - name: Ensure validated nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+      when: not ansible_check_mode
+    - name: Reload validated nginx configuration
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+      when: not ansible_check_mode

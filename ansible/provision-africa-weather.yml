@@ -33,6 +33,8 @@
         name: [git, python3, nginx, certbot, python3-certbot-nginx, ca-certificates]
         state: present
         update_cache: true
+    - name: Repair and validate global nginx before country deployments
+      ansible.builtin.include_tasks: weather/nginx-repair.yml
     - name: Create dedicated unprivileged service account
       ansible.builtin.user:
         name: olamide-weather
