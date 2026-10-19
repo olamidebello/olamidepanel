@@ -2,6 +2,11 @@
 - name: Update Africa Weather forecast landing page
   hosts: all
   become: true
+  vars:
+    domain: africaweather.africandroid.world
+    edition_port: 18999
+    weather_certificate_name: africaweather.africandroid.world
+    hub_dns_ipv4: 181.214.149.146
   tasks:
     - name: Require existing hub service
       ansible.builtin.stat:
@@ -31,6 +36,62 @@
       retries: 5
       delay: 2
       until: hub_health.status == 200
+    - name: Require public DNS to resolve exclusively to this host
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "import socket,sys; assert {r[4][0] for r in socket.getaddrinfo(sys.argv[1],443)} == {sys.argv[2]}, 'DNS must point exclusively to this server before certificate repair'"
+          - '{{ domain }}'
+          - '{{ hub_dns_ipv4 }}'
+      changed_when: false
+    - name: Inspect dedicated Africa Weather certificate
+      ansible.builtin.stat:
+        path: '/etc/letsencrypt/live/{{ domain }}/fullchain.pem'
+      register: edition_certificate
+    - name: Repair dedicated Africa Weather nginx virtual host
+      ansible.builtin.template:
+        src: weather/nginx.conf.j2
+        dest: /etc/nginx/sites-available/africaweather
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      register: hub_nginx
+    - name: Enable dedicated Africa Weather virtual host
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/africaweather
+        dest: /etc/nginx/sites-enabled/africaweather
+        state: link
+    - name: Validate repaired nginx configuration
+      block:
+        - name: Check nginx configuration before reload
+          ansible.builtin.command: nginx -t
+          changed_when: false
+      rescue:
+        - name: Restore previous virtual host after validation failure
+          ansible.builtin.copy:
+            src: '{{ hub_nginx.backup_file }}'
+            dest: /etc/nginx/sites-available/africaweather
+            remote_src: true
+          when: hub_nginx.backup_file is defined
+        - name: Stop certificate repair until nginx configuration is valid
+          ansible.builtin.fail:
+            msg: nginx validation failed. Previous virtual host restored when a backup was available; inspect nginx -t output.
+    - name: Activate repaired virtual host
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+    - name: Obtain and install a certificate for Africa Weather
+      ansible.builtin.command:
+        argv: '{{ ["certbot", "--nginx", "--non-interactive", "--agree-tos", "--redirect", "--keep-until-expiring", "--cert-name", domain, "-d", domain] + (["--email", hub_tls_email] if hub_tls_email is defined and hub_tls_email | length > 0 else []) }}'
+      register: hub_certbot
+      changed_when: "'no action taken' not in (hub_certbot.stdout | lower)"
+    - name: Enable automatic certificate renewal
+      ansible.builtin.systemd:
+        name: certbot.timer
+        state: started
+        enabled: true
     - name: Verify public HTTPS landing page
       ansible.builtin.uri:
         url: https://africaweather.africandroid.world/
