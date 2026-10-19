@@ -1,0 +1,7 @@
+# Keep real DNS tokens in Ansible Vault or controller environment variables.
+tls_email: admin@example.com
+dns_provider: cloudflare
+dns_ipv4: 181.214.149.146
+# dns_zone_id: authoritative africandroid.world zone ID
+# dns_api_token: scoped Zone DNS Edit token, preferably in Ansible Vault
+# weather_only: [ghana, kenya]   # Omit to provision all 54 requested editions.

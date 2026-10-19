@@ -1,0 +1,79 @@
+---
+- name: Provision country weather editions in Olamidepanel
+  hosts: all
+  become: true
+  vars:
+    weather_root: /opt/olamide-weather
+    weather_source_ref: e1a83a372766e78a19d7bd051fde8c4a509dfc61
+    weather_countries: "{{ lookup('file', playbook_dir + '/weather/countries.json') | from_json }}"
+    weather_only: []
+    weather_port_base: 19000
+    dns_provider: cloudflare
+    dns_ipv4: 181.214.149.146
+    dns_zone_id: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID') }}"
+    dns_api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+    tls_email: "{{ lookup('env', 'WEATHER_TLS_EMAIL') }}"
+  tasks:
+    - name: Validate settings before changing the server
+      ansible.builtin.assert:
+        that:
+          - tls_email is match('^[^ @]+@[^ @]+[.][^ @]+$')
+          - dns_provider in ['cloudflare', 'manual']
+          - weather_only is sequence and weather_only is not string
+          - weather_only | difference(weather_countries | map(attribute='slug') | list) | length == 0
+          - weather_port_base | int >= 1024
+          - weather_port_base | int + weather_countries | length < 65536
+          - weather_root is match('^/opt/[a-zA-Z0-9_-]+$')
+    - name: Require the installed panel inventory account
+      ansible.builtin.getent:
+        database: group
+        key: olamidepanel
+    - name: Install hosting dependencies
+      ansible.builtin.apt:
+        name: [git, python3, nginx, certbot, python3-certbot-nginx, ca-certificates]
+        state: present
+        update_cache: true
+    - name: Create dedicated unprivileged service account
+      ansible.builtin.user:
+        name: olamide-weather
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+    - name: Create application parent
+      ansible.builtin.file:
+        path: '{{ weather_root }}'
+        state: directory
+        mode: '0755'
+    - name: Clone the complete tested WeatherNigeria source
+      ansible.builtin.git:
+        repo: https://github.com/olamidebello/weathernigeria.git
+        dest: '{{ weather_root }}/source'
+        version: '{{ weather_source_ref }}'
+        force: false
+    - name: Install country edition renderer and status exporter
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/weather/{{ item }}'
+        dest: '{{ weather_root }}/{{ item }}'
+        mode: '0644'
+      loop: [render.py, status.py]
+    - name: Enable nginx and automatic certificate renewal
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: started
+        enabled: true
+      loop: [nginx, certbot.timer]
+    - name: Initialize failed domain list
+      ansible.builtin.set_fact:
+        weather_failures: []
+    - name: Provision editions sequentially with stable ports
+      ansible.builtin.include_tasks: weather/site.yml
+      loop: '{{ weather_countries }}'
+      loop_control:
+        loop_var: country
+        index_var: country_index
+        label: '{{ country.domain }}'
+      when: weather_only | length == 0 or country.slug in weather_only
+    - name: Report any incomplete domains
+      ansible.builtin.assert:
+        that: weather_failures | length == 0
+        fail_msg: 'Incomplete domains: {{ weather_failures | join(", ") }}. See Hosting Domains for details. Correct the prerequisite and rerun; successful sites remain available.'

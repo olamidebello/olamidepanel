@@ -187,3 +187,11 @@ Run `ansible-playbook -i localhost, -c local ansible/enable-module-manager.yml` 
 A root-owned broker processes one operation at a time, rechecks the requesting account, uses fixed Debian packages and project Python requirements, and restores only allowlisted files from a root-owned snapshot. Changed files are backed up before replacement; the panel restarts only if source changed. Re-run this installer after pulling new code to refresh trusted sources. Periodic source/dependency checks run approximately every 15 minutes, with automatic repair attempts limited to once hourly per adapter. Disable automation with `systemctl disable --now olamidepanel-modules.timer`; inspect `journalctl -u olamidepanel-modules.service` for operations. MySQL stores `module_jobs` and `module_status`; interrupted operations become uncertain rather than replaying blindly.
 
 These checks validate source syntax and importable prerequisites, not complete end-to-end runtime correctness. Missing or partial application behavior is listed in the full coverage catalog and remains partial until its implementation exists. This does not install commercial products, accept license terms, create external accounts, provide credentials, implement absent integrations, or certify cPanel feature parity. DNS/mail customer hosting needs its specific configured deployment adapters. The broker installs prerequisites for the existing fixed panel adapters only.
+
+### African country weather hosting
+
+Provision all 54 requested country editions of WeatherNigeria with automatic DNS,
+isolated services, nginx, HTTPS and Hosting Domains status reporting:
+[deployment instructions](docs/AFRICA_WEATHER.md),
+[Ansible playbook](ansible/provision-africa-weather.yml),
+[country and domain catalog](ansible/weather/countries.json).

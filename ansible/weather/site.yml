@@ -1,0 +1,145 @@
+---
+- name: Set edition paths
+  ansible.builtin.set_fact:
+    domain: '{{ country.domain }}'
+    edition_root: '{{ weather_root }}/{{ country.slug }}'
+    edition_service: 'weather-{{ country.slug }}'
+    edition_port: '{{ weather_port_base | int + country_index | int }}'
+
+- name: Provision and verify this country
+  block:
+    - name: Create edition directory
+      ansible.builtin.file:
+        path: '{{ edition_root }}'
+        state: directory
+        mode: '0755'
+    - name: Write country settings
+      ansible.builtin.copy:
+        content: '{{ country | to_nice_json }}'
+        dest: '{{ edition_root }}/country.json'
+        mode: '0644'
+    - name: Build full customized edition
+      ansible.builtin.command:
+        argv: [python3, '{{ weather_root }}/render.py', '{{ weather_root }}/source', '{{ edition_root }}', '{{ edition_root }}/country.json']
+      changed_when: true
+    - name: Validate generated Python
+      ansible.builtin.command:
+        argv: [python3, -m, py_compile, '{{ edition_root }}/server.py']
+      changed_when: false
+    - name: Install isolated systemd service
+      ansible.builtin.copy:
+        dest: '/etc/systemd/system/{{ edition_service }}.service'
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Weather {{ country.name }}
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          User=olamide-weather
+          Group=olamide-weather
+          WorkingDirectory={{ edition_root }}
+          Environment=HOST=127.0.0.1 PORT={{ edition_port }}
+          ExecStart=/usr/bin/python3 {{ edition_root }}/server.py
+          Restart=on-failure
+          RestartSec=5
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectSystem=strict
+          ProtectHome=true
+          MemoryMax=192M
+          TasksMax=64
+          [Install]
+          WantedBy=multi-user.target
+    - name: Start current edition
+      ansible.builtin.systemd:
+        name: '{{ edition_service }}'
+        daemon_reload: true
+        enabled: true
+        state: restarted
+    - name: Verify backend health
+      ansible.builtin.uri:
+        url: 'http://127.0.0.1:{{ edition_port }}/api/health'
+        status_code: 200
+      register: backend_health
+      retries: 10
+      delay: 2
+      until: backend_health.status | default(0) == 200
+    - name: Inspect existing certificate
+      ansible.builtin.stat:
+        path: '/etc/letsencrypt/live/{{ domain }}/fullchain.pem'
+      register: edition_certificate
+    - name: Configure nginx with existing TLS preserved
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: '/etc/nginx/sites-available/{{ edition_service }}'
+        mode: '0644'
+        backup: true
+    - name: Enable edition virtual host
+      ansible.builtin.file:
+        src: '/etc/nginx/sites-available/{{ edition_service }}'
+        dest: '/etc/nginx/sites-enabled/{{ edition_service }}'
+        state: link
+    - name: Validate nginx before reload
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Activate virtual host
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+    - name: Provision authoritative DNS and wait for propagation
+      ansible.builtin.include_tasks: dns.yml
+      when: dns_provider == 'cloudflare'
+    - name: Confirm manually provisioned DNS points to the server
+      ansible.builtin.command:
+        argv: [python3, -c, 'import socket,sys; assert {r[4][0] for r in socket.getaddrinfo(sys.argv[1],443)} == {sys.argv[2]}, "DNS A/AAAA does not exclusively point to this IPv4"', '{{ domain }}', '{{ dns_ipv4 }}']
+      changed_when: false
+      when: dns_provider == 'manual'
+    - name: Obtain HTTPS certificate
+      ansible.builtin.command:
+        argv: [certbot, --nginx, --non-interactive, --agree-tos, --redirect, --keep-until-expiring, --cert-name, '{{ domain }}', --email, '{{ tls_email }}', -d, '{{ domain }}']
+      register: edition_certbot
+      changed_when: "'Deploying certificate' in edition_certbot.stdout or 'Successfully' in edition_certbot.stdout"
+    - name: Verify trusted public HTTPS and application health
+      ansible.builtin.uri:
+        url: 'https://{{ domain }}/api/health'
+        status_code: 200
+        validate_certs: true
+      register: public_health
+      retries: 3
+      delay: 5
+      until: public_health.status | default(0) == 200
+    - name: Confirm real country forecast from the upstream provider
+      ansible.builtin.uri:
+        url: 'https://{{ domain }}/api/weather?lat={{ country.cities[0][1] }}&lon={{ country.cities[0][2] }}'
+        status_code: 200
+        return_content: true
+      register: forecast_health
+      failed_when: forecast_health.status != 200 or forecast_health.json.current is not defined or forecast_health.json.daily is not defined
+    - name: Prepare verified status
+      ansible.builtin.set_fact:
+        edition_status: https_ready
+        edition_error: ''
+  rescue:
+    - name: Record failure and continue remaining editions
+      ansible.builtin.set_fact:
+        weather_failures: '{{ weather_failures + [domain] }}'
+        edition_status: needs_attention
+        edition_error: '{{ ansible_failed_task.name }} failed; inspect the Ansible run on the server.'
+  always:
+    - name: Write country status for the panel
+      ansible.builtin.copy:
+        dest: '{{ weather_root }}/status-{{ country.slug }}.json'
+        mode: '0640'
+        content: >-
+          {{ {'domain': domain, 'status': edition_status, 'error': edition_error,
+          'checked_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ'),
+          'document_root': edition_root + '/static',
+          'configuration': '/etc/nginx/sites-available/' + edition_service,
+          'backend': 'http://127.0.0.1:' + (edition_port | string),
+          'repo': 'olamidebello/weathernigeria', 'commit': weather_source_ref,
+          'deployment_status': edition_status} | to_nice_json }}
+    - name: Merge status into Hosting Domains inventory
+      ansible.builtin.command:
+        argv: [python3, '{{ weather_root }}/status.py', '{{ weather_root }}/status-{{ country.slug }}.json']
+      changed_when: true
