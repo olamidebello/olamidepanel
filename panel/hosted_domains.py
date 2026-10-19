@@ -4,11 +4,62 @@ import re
 from pathlib import Path
 
 SNAPSHOT = Path('/var/lib/olamidepanel/hosted-domains.json')
-OPERATOR_DOMAINS = (
-    'africanappsstore.space', 'olamidepanel.com', 'nekkeddating.com',
-    'olamideolatayobello.com', 'africanbrowser.com', 'dobhrap.com',
-    'aicourtsystem.com',
-)
+# Country inventory mirrors ansible/weather/countries.json; tests enforce parity.
+WEATHER_DOMAINS = {'weatheralgeria.africandroid.world': 'Algeria',
+ 'weatherangola.africandroid.world': 'Angola',
+ 'weatherbenin.africandroid.world': 'Benin',
+ 'weatherbotswana.africandroid.world': 'Botswana',
+ 'weatherburkinafaso.africandroid.world': 'Burkina Faso',
+ 'weatherburundi.africandroid.world': 'Burundi',
+ 'weathercaboverde.africandroid.world': 'Cabo Verde',
+ 'weathercameroon.africandroid.world': 'Cameroon',
+ 'weathercentralafricanrepublic.africandroid.world': 'Central African Republic',
+ 'weatherchad.africandroid.world': 'Chad',
+ 'weathercomoros.africandroid.world': 'Comoros',
+ 'weatherdemocraticrepublicofthecongo.africandroid.world': 'Democratic Republic of the Congo',
+ 'weatherrepublicofthecongo.africandroid.world': 'Republic of the Congo',
+ 'weathercotedivoire.africandroid.world': 'Côte d’Ivoire',
+ 'weatherdjibouti.africandroid.world': 'Djibouti',
+ 'weatheregypt.africandroid.world': 'Egypt',
+ 'weatherequatorialguinea.africandroid.world': 'Equatorial Guinea',
+ 'weathereritrea.africandroid.world': 'Eritrea',
+ 'weathereswatini.africandroid.world': 'Eswatini',
+ 'weatherethiopia.africandroid.world': 'Ethiopia',
+ 'weathergabon.africandroid.world': 'Gabon',
+ 'weathergambia.africandroid.world': 'Gambia',
+ 'weatherghana.africandroid.world': 'Ghana',
+ 'weatherguinea.africandroid.world': 'Guinea',
+ 'weatherguineabissau.africandroid.world': 'Guinea-Bissau',
+ 'weatherkenya.africandroid.world': 'Kenya',
+ 'weatherlesotho.africandroid.world': 'Lesotho',
+ 'weatherliberia.africandroid.world': 'Liberia',
+ 'weatherlibya.africandroid.world': 'Libya',
+ 'weathermadagascar.africandroid.world': 'Madagascar',
+ 'weathermalawi.africandroid.world': 'Malawi',
+ 'weathermali.africandroid.world': 'Mali',
+ 'weathermauritania.africandroid.world': 'Mauritania',
+ 'weathermauritius.africandroid.world': 'Mauritius',
+ 'weathermorocco.africandroid.world': 'Morocco',
+ 'weathermozambique.africandroid.world': 'Mozambique',
+ 'weathernamibia.africandroid.world': 'Namibia',
+ 'weatherniger.africandroid.world': 'Niger',
+ 'weatherrwanda.africandroid.world': 'Rwanda',
+ 'weathersaotomeandprincipe.africandroid.world': 'São Tomé and Príncipe',
+ 'weathersenegal.africandroid.world': 'Senegal',
+ 'weatherseychelles.africandroid.world': 'Seychelles',
+ 'weathersierraleone.africandroid.world': 'Sierra Leone',
+ 'weathersomalia.africandroid.world': 'Somalia',
+ 'weathersouthafrica.africandroid.world': 'South Africa',
+ 'weathersouthsudan.africandroid.world': 'South Sudan',
+ 'weathersudan.africandroid.world': 'Sudan',
+ 'weathertanzania.africandroid.world': 'Tanzania',
+ 'weathertogo.africandroid.world': 'Togo',
+ 'weathertunisia.africandroid.world': 'Tunisia',
+ 'weatheruganda.africandroid.world': 'Uganda',
+ 'weatherzambia.africandroid.world': 'Zambia',
+ 'weatherzimbabwe.africandroid.world': 'Zimbabwe',
+ 'weatherwesternsahara.africandroid.world': 'Western Sahara'}
+OPERATOR_DOMAINS = ('africanappsstore.space', 'olamidepanel.com', 'nekkeddating.com', 'olamideolatayobello.com', 'africanbrowser.com', 'dobhrap.com', 'aicourtsystem.com', 'africancreativity.io', 'africandroid.world', 'africandroid.space', 'olamidemedical.health', 'weathernigeria.africandroid.world') + tuple(WEATHER_DOMAINS)
 
 DOMAIN = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 
@@ -49,6 +100,13 @@ def report(user, connect, snapshot=None, operator_domains=OPERATOR_DOMAINS):
     except (OSError, ValueError, TypeError, KeyError):
         updated = None
         notice = 'Server hosting status is unavailable. Run the hosting playbook to export its domain inventory.'
+    for name, item in inventory.items():
+        if name in WEATHER_DOMAINS:
+            item['country'] = WEATHER_DOMAINS[name]
+            item['category'] = 'country_weather'
+        elif name == 'weathernigeria.africandroid.world':
+            item['country'] = 'Nigeria'
+            item['category'] = 'country_weather'
     return {'domains': sorted(inventory.values(), key=lambda x:x['name']),
             'updated_at': updated, 'notice': notice}
 

@@ -61,4 +61,29 @@ class HostingDomainTests(unittest.TestCase):
         self.assertEqual(row['status'], 'waiting_dns')
         self.assertEqual(row['source'], 'Server hosting automation')
 
+class CountryWeatherInventoryTests(unittest.TestCase):
+    def test_all_country_domains_visible_before_deployment(self):
+        catalog = json.loads((Path(__file__).resolve().parents[1] / 'ansible/weather/countries.json').read_text())
+        self.assertEqual(module.WEATHER_DOMAINS, {x['domain']: x['name'] for x in catalog})
+        with tempfile.TemporaryDirectory() as directory:
+            data = module.report({'role':'super_admin'}, Connection, Path(directory) / 'missing')
+        rows = {r['name']:r for r in data['domains']}
+        for country in catalog:
+            self.assertEqual(rows[country['domain']]['country'], country['name'])
+            self.assertEqual(rows[country['domain']]['category'], 'country_weather')
+            self.assertEqual(rows[country['domain']]['status'], 'verification_pending')
+        self.assertEqual(rows['weathernigeria.africandroid.world']['country'], 'Nigeria')
+
+    def test_country_snapshot_keeps_failure_and_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'snapshot.json'
+            path.write_text(json.dumps({'updated_at':123,'domains':[
+                {'domain':'weathertunisia.africandroid.world','status':'needs_attention','error':'Obtain HTTPS certificate failed'},
+                {'domain':'weatherghana.africandroid.world','status':'https_ready','checked_at':'2026-10-19T17:00:00Z'}]}))
+            data = module.report({'role':'super_admin'}, Connection, path)
+        rows = {r['name']:r for r in data['domains']}
+        self.assertEqual(rows['weathertunisia.africandroid.world']['status'], 'needs_attention')
+        self.assertEqual(rows['weatherghana.africandroid.world']['status'], 'https_ready')
+        self.assertEqual(rows['weatherghana.africandroid.world']['country'], 'Ghana')
+
 if __name__ == '__main__': unittest.main()

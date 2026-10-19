@@ -368,34 +368,37 @@ async function hostingDomainsView(d){
  if(!me.permissions.includes('users.manage'))throw Error('Super-admin access required');
  d.append(el('p','All panel domain records and operator-managed hosting domains. Viewing a domain does not transfer ownership or enable editing.'));
  const controls=el('div',undefined,'banner-actions'),search=el('input'),refresh=el('button','Refresh status');
- search.type='search';search.placeholder='Search domains or owners';search.setAttribute('aria-label','Search hosting domains');
- controls.append(search,refresh);d.append(controls);
+ search.type='search';search.placeholder='Search domains, countries or owners';search.setAttribute('aria-label','Search hosting domains');
+ const category=el('select');category.setAttribute('aria-label','Filter hosting domains');for(const[value,label]of [['all','All domains'],['country_weather','Country weather']]){const option=el('option',label);option.value=value;category.append(option)}
+ controls.append(search,category,refresh);d.append(controls);
+ const checkedDate=value=>{const date=new Date(typeof value==='number'?value*1000:value);return Number.isNaN(date.getTime())?'Unavailable':date.toLocaleString()};
  const summary=el('p'),notice=el('p'),list=el('div',undefined,'account-list');summary.setAttribute('role','status');d.append(summary,notice,list);
  const labels={verification_pending:'Configured domain · hosting verification pending',https_ready:'HTTPS configured',waiting_dns:'Waiting for DNS',waiting_tls_retry:'Certificate retry scheduled',needs_attention:'Needs attention',existing_site_preserved:'Existing website preserved',inventory_only:'Inventory only',deployed_waiting_dns:'Application deployed · waiting for DNS',deployed_tls_needs_attention:'Application deployed · HTTPS needs attention',waiting_repository:'Waiting for repository'};
  let domains=[];
  const draw=()=>{
-  list.replaceChildren();const q=search.value.trim().toLowerCase();const shown=domains.filter(x=>(x.name+' '+x.owner+' '+x.status).toLowerCase().includes(q));
+  list.replaceChildren();const q=search.value.trim().toLowerCase();const shown=domains.filter(x=>(category.value==='all'||x.category===category.value)&&(x.name+' '+(x.country||'')+' '+x.owner+' '+x.status).toLowerCase().includes(q));
   summary.textContent=shown.length+' of '+domains.length+' hosting domains';
   if(!shown.length)list.append(el('p','No domains match.'));
   for(const x of shown){
    const row=el('article',undefined,'account-row'),info=el('div');
    info.append(el('strong',x.name),el('p','Owner: '+x.owner+' · '+x.source),el('span',labels[x.status]||x.status,'badge'));
+   if(x.country)info.append(el('p','Country weather: '+x.country));
    if(x.www)info.append(el('p','www: '+(x.www==='ready'?(x.status==='https_ready'?'HTTPS configured':'DNS ready'):'Waiting for DNS')));
    if(x.deployment_status)info.append(el('p','Deployment: '+(x.deployment_status==='running'?'Application ready':labels[x.deployment_status]||x.deployment_status)));
    if(x.backend)info.append(el('p','Backend: '+x.backend));
    if(x.repo)info.append(el('p','Repository: '+x.repo+(x.commit?' · '+x.commit.slice(0,7):'')));
    if(x.error)info.append(el('p',x.error));
-   if(x.deployment_checked_at)info.append(el('p','Deployment checked: '+new Date(x.deployment_checked_at*1000).toLocaleString()));
+   if(x.deployment_checked_at)info.append(el('p','Deployment checked: '+checkedDate(x.deployment_checked_at)));
    if(x.document_root)info.append(el('p','Document root: '+x.document_root));
    if(x.configuration)info.append(el('p','Existing configuration: '+x.configuration));
-   if(x.checked_at)info.append(el('p','Last checked: '+new Date(x.checked_at*1000).toLocaleString()));
+   if(x.checked_at)info.append(el('p','Last checked: '+checkedDate(x.checked_at)));
    row.append(info);
    {const visit=el('a',x.status==='https_ready'?'Open website ↗':'Check website ↗');visit.href='https://'+x.name+'/';visit.target='_blank';visit.rel='noopener noreferrer';row.append(visit)}
    list.append(row);
   }
  };
  const load=async()=>{refresh.disabled=true;try{const data=await api('hosting-domains');domains=data.domains;notice.textContent=data.notice||(data.updated_at?'Hosting snapshot: '+new Date(data.updated_at*1000).toLocaleString():'');draw()}finally{refresh.disabled=false}};
- search.oninput=draw;refresh.onclick=guard(load);await load();
+ search.oninput=draw;category.onchange=draw;refresh.onclick=guard(load);await load();
 }
 
 

@@ -1,0 +1,53 @@
+---
+- name: Update super-admin country weather domain inventory
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    panel_install: /opt/olamidepanel
+  tasks:
+    - name: Require an existing panel installation
+      ansible.builtin.stat:
+        path: '{{ panel_install }}/{{ item }}'
+      loop: [venv/bin/python, panel/server.py, panel/hosted_domains.py, panel/static/app.js]
+      register: weather_gui_dependencies
+    - name: Verify panel paths before updating
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: 'Existing panel not found at {{ panel_install }}; set panel_install to the live panel directory.'
+      loop: '{{ weather_gui_dependencies.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+    - name: Update country inventory and Hosting Domains view with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '{{ panel_install }}/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [hosted_domains.py, static/app.js]
+      notify: Restart panel for inventory update
+    - name: Validate inventory module before restart
+      ansible.builtin.command:
+        argv: ['{{ panel_install }}/venv/bin/python', -m, py_compile, '{{ panel_install }}/panel/hosted_domains.py']
+      changed_when: false
+    - name: Apply inventory update
+      ansible.builtin.meta: flush_handlers
+    - name: Verify panel API is listening
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/api/me
+        status_code: [200, 401]
+      register: weather_gui_health
+      until: weather_gui_health.status | default(0) in [200, 401]
+      retries: 10
+      delay: 2
+      when: not ansible_check_mode
+    - name: Report super-admin navigation
+      ansible.builtin.debug:
+        msg: Open Administration -> Hosting Domains. All 54 requested editions and WeatherNigeria are listed. Select Country weather to filter. Existing deployment snapshots supply verified status; unverified domains remain pending.
+  handlers:
+    - name: Restart panel for inventory update
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted

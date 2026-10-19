@@ -166,3 +166,27 @@ playbook with `-e dns_provider=cloudflare`. Zone ID discovery also requires Zone
 permission. No script can create authoritative records without access to the
 provider managing the domain. Avoid fake local hosts-file entries: those do not
 make public HTTPS validation work.
+
+## Super-admin GUI inventory update
+
+The Hosting Domains inventory includes every requested country edition even before
+its first successful deployment, as well as WeatherNigeria and the other operator
+sites. Country names appear on each row and can be searched. The Country weather
+filter shows the 55 weather domains. Existing status snapshots override pending
+inventory state, including certificate failures; list membership alone never means
+a domain is live. Both Unix timestamps and ISO weather timestamps display correctly.
+
+After the current provisioning run finishes, update the live panel from the source
+checkout without rerunning website deployments:
+
+```bash
+cd /opt/olamide-weather-deploy
+git pull --ff-only origin main
+ansible-playbook -i localhost, -c local ansible/update-weather-domain-gui.yml
+```
+
+The playbook backs up and updates only the inventory module and its GUI code,
+restarts the panel when files change and checks its API listener. It preserves the
+hosting status snapshot and database ownership. If the live installation is not
+`/opt/olamidepanel`, pass `-e panel_install=/actual/install/path`. Sign in as root or
+super admin, open Administration -> Hosting Domains, then refresh the page/status.
