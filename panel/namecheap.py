@@ -13,6 +13,20 @@ from database import connect
 NS = {'n': 'https://api.namecheap.com/xml.response'}
 LOCK = threading.Lock()
 
+def parse_response(payload):
+    root = ET.fromstring(payload)
+    namespaces = ('http://api.namecheap.com/xml.response', NS['n'])
+    for node in root.iter():
+        for namespace in namespaces:
+            prefix = '{' + namespace + '}'
+            if node.tag.startswith(prefix):
+                local = node.tag[len(prefix):]
+                node.tag = '{' + NS['n'] + '}' + ('host' if local == 'Host' else local)
+                break
+    if root.tag != '{' + NS['n'] + '}ApiResponse':
+        raise ValueError('Unrecognized Namecheap XML response.')
+    return root
+
 def call(account, command, **params):
     endpoint = 'https://api.namecheap.com/xml.response' if account['mode'] == 'production' else 'https://api.sandbox.namecheap.com/xml.response'
     args = {k: account[k] for k in ('ApiUser', 'ApiKey', 'UserName', 'ClientIp')}
@@ -20,7 +34,7 @@ def call(account, command, **params):
     try:
         request = urllib.request.Request(endpoint, data=urllib.parse.urlencode(args).encode())
         with urllib.request.urlopen(request, timeout=30) as response:
-            root = ET.fromstring(response.read(2_000_000))
+            root = parse_response(response.read(2_000_000))
         if root.get('Status') != 'OK':
             raise ValueError('Namecheap rejected the request. Check API access, credentials, IP allowlist and domain DNS provider.')
         return root

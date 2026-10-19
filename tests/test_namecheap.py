@@ -9,6 +9,16 @@ def zone(extra=''):
     return ET.fromstring('<ApiResponse xmlns="https://api.namecheap.com/xml.response" Status="OK"><DomainDNSGetHostsResult IsUsingOurDNS="true"><host Name="@" Type="A" Address="192.0.2.1" TTL="300"/><host Name="@" Type="TXT" Address="verify-token" TTL="300"/>'+extra+'</DomainDNSGetHostsResult></ApiResponse>')
 
 class NamecheapTests(unittest.TestCase):
+    def test_documented_http_namespace_and_capital_host(self):
+        root = nc.parse_response('<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK"><CommandResponse><DomainDNSGetHostsResult IsUsingOurDNS="true"><Host Name="@" Type="A" Address="192.0.2.1" TTL="300"/></DomainDNSGetHostsResult></CommandResponse></ApiResponse>')
+        result = root.find('.//n:DomainDNSGetHostsResult', nc.NS)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.find('n:host', nc.NS).get('Name'), '@')
+    def test_https_namespace_and_lowercase_host(self):
+        root = nc.parse_response('<ApiResponse xmlns="https://api.namecheap.com/xml.response" Status="OK"><DomainDNSGetHostsResult><host Name="www"/></DomainDNSGetHostsResult></ApiResponse>')
+        self.assertEqual(root.find('.//n:host', nc.NS).get('Name'), 'www')
+    def test_unknown_namespace_rejected(self):
+        with self.assertRaises(ValueError):nc.parse_response('<ApiResponse xmlns="https://example.com" Status="OK"/>')
     def test_permissions_before_database(self):
         for role in ['admin','reseller','user','readonly']:
             with patch.object(nc,'connect') as db:

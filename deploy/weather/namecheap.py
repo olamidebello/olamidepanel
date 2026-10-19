@@ -1,6 +1,18 @@
 """Preserve the whole Namecheap zone; credentials arrive only on stdin."""
 import sys, json, ipaddress, urllib.request, urllib.parse, xml.etree.ElementTree as ET
 NS={'n':'https://api.namecheap.com/xml.response'}
+def parse_response(payload):
+    root=ET.fromstring(payload)
+    for node in root.iter():
+        for namespace in ('http://api.namecheap.com/xml.response', NS['n']):
+            prefix='{'+namespace+'}'
+            if node.tag.startswith(prefix):
+                local=node.tag[len(prefix):]
+                node.tag='{'+NS['n']+'}'+('host' if local=='Host' else local)
+                break
+    if root.tag!='{'+NS['n']+'}ApiResponse': raise ValueError('Unrecognized Namecheap XML response')
+    return root
+
 def merge(records, names, address):
     ipaddress.IPv4Address(address)
     out=[dict(r) for r in records]
@@ -20,7 +32,7 @@ def main():
     base.update(SLD='africandroid',TLD='world')
     def call(cmd,extra=None):
         body=urllib.parse.urlencode(dict(base,Command='namecheap.domains.dns.'+cmd,**(extra or {}))).encode()
-        with urllib.request.urlopen(urllib.request.Request('https://api.namecheap.com/xml.response',data=body),timeout=45) as res: root=ET.fromstring(res.read())
+        with urllib.request.urlopen(urllib.request.Request('https://api.namecheap.com/xml.response',data=body),timeout=45) as res: root=parse_response(res.read())
         if root.get('Status')!='OK': raise RuntimeError('Namecheap API rejected request; check API access, IP allowlist and DNS provider.')
         return root
     root=call('getHosts'); result=root.find('.//n:DomainDNSGetHostsResult',NS)
