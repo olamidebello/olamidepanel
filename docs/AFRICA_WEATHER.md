@@ -138,3 +138,31 @@ and starts/reloads nginx. The second retries country provisioning. Existing
 backend processes may already be healthy despite the previous global nginx test
 failures. Remaining duplicate-name warnings require comparison of the distinct
 virtual hosts; they are separate from the fatal hash-size error.
+
+## Hostnames do not resolve; DNS creation was skipped
+
+`socket.gaierror: Name or service not known` during the manual DNS check means the
+server resolver cannot resolve that name. A skipped authoritative DNS task means
+Cloudflare automation was not selected. Creating nginx sites does not create public
+DNS records. The updated playbook audits all selected manual DNS names before any
+application rebuild and writes a BIND-format import file:
+`/var/lib/olamidepanel/africa-weather-dns.zone`.
+
+Generate the file without an application deployment or certificate email:
+
+```bash
+ansible-playbook -i localhost, -c local ansible/export-weather-dns.yml
+```
+
+This audit deliberately fails if any hostname is absent or points elsewhere; the
+import file is still written. Import its A records into the authoritative DNS
+provider for `africandroid.world`, resolve conflicting AAAA/CNAME records explicitly,
+and wait for DNS propagation before rerunning repair. Importing a file is a DNS
+provider operation; placing the file on the web server alone does not publish DNS.
+
+For a Cloudflare-hosted authoritative zone, supply its DNS Edit token and zone ID
+through the documented environment or root-only settings file and run the repair
+playbook with `-e dns_provider=cloudflare`. Zone ID discovery also requires Zone Read
+permission. No script can create authoritative records without access to the
+provider managing the domain. Avoid fake local hosts-file entries: those do not
+make public HTTPS validation work.

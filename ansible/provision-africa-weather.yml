@@ -28,6 +28,9 @@
       ansible.builtin.getent:
         database: group
         key: olamidepanel
+    - name: Check manual DNS once before application changes
+      ansible.builtin.include_tasks: weather/manual-dns-preflight.yml
+      when: dns_provider == 'manual'
     - name: Install hosting dependencies
       ansible.builtin.apt:
         name: [git, python3, nginx, certbot, python3-certbot-nginx, ca-certificates]

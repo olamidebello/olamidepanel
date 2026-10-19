@@ -1,9 +1,9 @@
 name: Country weather editions
 on:
   push:
-    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'ansible/repair-weather-nginx.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', 'tests/test_weather_nginx.py', '.github/workflows/weather-editions.yml']
+    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'ansible/repair-weather-nginx.yml', 'ansible/export-weather-dns.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', 'tests/test_weather_nginx.py', 'tests/test_weather_dns_preflight.py', '.github/workflows/weather-editions.yml']
   pull_request:
-    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'ansible/repair-weather-nginx.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', 'tests/test_weather_nginx.py', '.github/workflows/weather-editions.yml']
+    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'ansible/repair-weather-nginx.yml', 'ansible/export-weather-dns.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', 'tests/test_weather_nginx.py', 'tests/test_weather_dns_preflight.py', '.github/workflows/weather-editions.yml']
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -24,6 +24,8 @@ jobs:
       - run: ansible-playbook -i localhost, ansible/provision-africa-weather.yml --syntax-check
       - run: ansible-playbook -i localhost, ansible/repair-africa-weather.yml --syntax-check
       - run: ansible-playbook -i localhost, ansible/repair-weather-nginx.yml --syntax-check
+      - run: ansible-playbook -i localhost, ansible/export-weather-dns.yml --syntax-check
+      - run: python -m unittest discover -s tests -p test_weather_dns_preflight.py -v
       - run: python -m unittest discover -s tests -p test_weather_nginx.py -v
       - run: python -m unittest discover -s tests -p test_weather_discovery.py -v
       - run: python -m unittest discover -s tests -p test_weather_editions.py -v

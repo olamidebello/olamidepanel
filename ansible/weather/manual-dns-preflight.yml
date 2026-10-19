@@ -1,0 +1,23 @@
+---
+- name: Audit country DNS before rebuilding applications and export import records
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../deploy/weather/dns_preflight.py
+      '{{ weather_dns_selection | to_json | b64encode }}' '{{ dns_ipv4 }}'
+    executable: python3
+  vars:
+    weather_dns_selection: "{{ weather_countries if weather_only | length == 0 else weather_countries | selectattr('slug', 'in', weather_only) | list }}"
+  register: weather_dns_preflight
+  changed_when: false
+  when: not ansible_check_mode
+- name: Require resolvable country hostnames when DNS automation is unavailable
+  ansible.builtin.assert:
+    that: (weather_dns_preflight.stdout | from_json).ready
+    fail_msg: >-
+      DNS is manual and these hostnames are absent or point elsewhere:
+      {{ (weather_dns_preflight.stdout | from_json).missing_or_wrong | map(attribute='domain') | join(', ') }}.
+      Import {{ (weather_dns_preflight.stdout | from_json).import_file }} into the authoritative
+      africandroid.world DNS zone, pointing A records to {{ dns_ipv4 }}, then rerun after propagation.
+      Alternatively configure a Cloudflare DNS Edit token and dns_provider=cloudflare for automatic creation.
+      Do not rerun application builds until DNS is configured. Existing services have not been restarted by this preflight.
+  when: not ansible_check_mode

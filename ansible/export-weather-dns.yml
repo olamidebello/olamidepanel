@@ -1,0 +1,12 @@
+---
+- name: Export country DNS records and audit current resolution
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    dns_ipv4: 181.214.149.146
+    weather_countries: "{{ lookup('file', playbook_dir + '/weather/countries.json') | from_json }}"
+    weather_only: []
+  tasks:
+    - name: Export and check selected DNS records
+      ansible.builtin.include_tasks: weather/manual-dns-preflight.yml
