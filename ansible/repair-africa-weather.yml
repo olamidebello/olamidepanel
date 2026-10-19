@@ -1,0 +1,71 @@
+---
+- name: Discover existing hosting configuration and validate repair prerequisites
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read existing weather, production Certbot and panel deployment settings
+      ansible.builtin.script:
+        cmd: '{{ playbook_dir }}/../deploy/weather/discover.py'
+        executable: python3
+      environment:
+        WEATHER_TLS_EMAIL: "{{ tls_email | default(lookup('env', 'WEATHER_TLS_EMAIL'), true) }}"
+        CLOUDFLARE_API_TOKEN: "{{ dns_api_token | default(lookup('env', 'CLOUDFLARE_API_TOKEN'), true) }}"
+        CLOUDFLARE_ZONE_ID: "{{ dns_zone_id | default(lookup('env', 'CLOUDFLARE_ZONE_ID'), true) }}"
+        WEATHER_DNS_PROVIDER: "{{ dns_provider | default('', true) }}"
+        WEATHER_IPV4: "{{ dns_ipv4 | default('', true) }}"
+      register: repair_discovery
+      no_log: true
+      failed_when: false
+      changed_when: false
+    - name: Explain missing configuration without exposing credentials
+      ansible.builtin.assert:
+        that: repair_discovery.rc == 0
+        fail_msg: >-
+          Existing configuration could not supply a valid certificate email, or a known settings file is malformed/unreadable.
+          Retry with -e tls_email=YOUR_REAL_EMAIL. Optional DNS settings belong in
+          /etc/olamide-weather/provision.json (root-only, mode 0600).
+          No site has been changed by this preflight.
+    - name: Apply discovered settings without logging credentials
+      ansible.builtin.set_fact:
+        tls_email: '{{ (repair_discovery.stdout | from_json).tls_email }}'
+        dns_provider: '{{ (repair_discovery.stdout | from_json).dns_provider }}'
+        dns_ipv4: '{{ (repair_discovery.stdout | from_json).dns_ipv4 }}'
+        dns_api_token: '{{ (repair_discovery.stdout | from_json).dns_api_token }}'
+        dns_zone_id: '{{ (repair_discovery.stdout | from_json).dns_zone_id }}'
+      no_log: true
+    - name: Require a DNS token when Cloudflare automation is selected
+      ansible.builtin.assert:
+        that: dns_api_token | length > 0
+        fail_msg: Cloudflare DNS requires a scoped API token. Configure it in the root-only weather settings file or use dns_provider=manual with existing DNS records.
+      when: dns_provider == 'cloudflare'
+      no_log: true
+    - name: Discover authoritative Cloudflare zone ID when absent
+      ansible.builtin.uri:
+        url: https://api.cloudflare.com/client/v4/zones?name=africandroid.world&status=active
+        headers:
+          Authorization: 'Bearer {{ dns_api_token }}'
+        return_content: true
+      register: repair_zone
+      when: dns_provider == 'cloudflare' and dns_zone_id | length == 0
+      no_log: true
+    - name: Require exactly one matching DNS zone
+      ansible.builtin.assert:
+        that:
+          - repair_zone.json.success
+          - repair_zone.json.result | length == 1
+        fail_msg: The token cannot discover one active africandroid.world zone. Supply dns_zone_id and a DNS Edit token scoped to that authoritative zone.
+      when: dns_provider == 'cloudflare' and dns_zone_id | length == 0
+    - name: Use detected zone
+      ansible.builtin.set_fact:
+        dns_zone_id: '{{ repair_zone.json.result[0].id }}'
+      when: dns_provider == 'cloudflare' and dns_zone_id | length == 0
+      no_log: true
+    - name: Explain DNS mode before repairs
+      ansible.builtin.debug:
+        msg: >-
+          Repairing all selected country editions using {{ dns_provider }} DNS.
+          Manual mode checks existing DNS and cannot create missing records.
+          Each site's service, nginx, HTTPS and forecast will be verified.
+
+- ansible.builtin.import_playbook: provision-africa-weather.yml

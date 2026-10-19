@@ -77,3 +77,37 @@ coordinate acceptance/rejection and preservation of the existing UI features.
 Live provisioning additionally verifies actual DNS, backend startup, certificates
 and upstream forecast responses. Syntax and local tests alone do not mean that
 public domains are deployed.
+
+## Automatic repair and blank-email recovery
+
+The repair entry point detects an email from explicit settings, Certbot's
+`/etc/letsencrypt/cli.ini`, production ACME account registration, or the existing
+panel deployment configuration `/etc/olamide-github-deploy.json`. It reads DNS
+credentials only from explicit settings, `/etc/olamide-weather/provision.json`, or
+`/etc/letsencrypt/cloudflare.ini`. It does not search arbitrary files for secrets.
+Cloudflare zone discovery requires Zone Read permission; otherwise supply the zone
+ID explicitly. Without a token it selects manual DNS and reports unresolved names
+as incomplete rather than claiming they are hosted.
+
+Run from the existing installer checkout:
+
+```bash
+git pull --ff-only origin main
+ansible-playbook -i localhost, -c local ansible/repair-africa-weather.yml
+```
+
+If no valid existing email is available, provide it once:
+
+```bash
+ansible-playbook -i localhost, -c local ansible/repair-africa-weather.yml \
+  -e tls_email=YOUR_REAL_EMAIL
+```
+
+For reusable settings, create `/etc/olamide-weather/provision.json` with root
+ownership and mode `0600`, using `ansible/weather/provision.example.json` as its
+schema. Replace every placeholder. Do not commit this file or put tokens in command
+arguments. The repair playbook runs the complete existing provisioning sequence:
+it restores edition files and services, regenerates managed nginx configuration,
+repairs configured DNS, reuses/renews certificates and verifies real forecasts.
+Failures remain visible individually in Hosting Domains. It is a manually invoked
+repair run, not a background timer, and cannot resolve missing external credentials.

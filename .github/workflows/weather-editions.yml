@@ -1,9 +1,9 @@
 name: Country weather editions
 on:
   push:
-    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', '.github/workflows/weather-editions.yml']
+    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', '.github/workflows/weather-editions.yml']
   pull_request:
-    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', '.github/workflows/weather-editions.yml']
+    paths: ['ansible/weather/**', 'ansible/provision-africa-weather.yml', 'ansible/repair-africa-weather.yml', 'deploy/weather/**', 'tests/test_weather_editions.py', 'tests/test_weather_discovery.py', '.github/workflows/weather-editions.yml']
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -22,6 +22,8 @@ jobs:
           node-version: '22'
       - run: pip install 'ansible-core>=2.17,<2.18'
       - run: ansible-playbook -i localhost, ansible/provision-africa-weather.yml --syntax-check
+      - run: ansible-playbook -i localhost, ansible/repair-africa-weather.yml --syntax-check
+      - run: python -m unittest discover -s tests -p test_weather_discovery.py -v
       - run: python -m unittest discover -s tests -p test_weather_editions.py -v
         env:
           WEATHER_TEST_SOURCE: weather-test-source
