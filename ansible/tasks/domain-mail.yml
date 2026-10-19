@@ -1,0 +1,20 @@
+---
+- name: Create protected domain DKIM directory
+  ansible.builtin.file:
+    path: '/etc/opendkim/olamidepanel/{{ mail_domain }}'
+    state: directory
+    owner: opendkim
+    group: opendkim
+    mode: '0700'
+- name: Generate persistent domain DKIM key without rotating existing keys
+  become_user: opendkim
+  ansible.builtin.command:
+    argv: [opendkim-genkey, -b, '2048', -d, '{{ mail_domain }}', -s, '{{ mail_selector }}', -D, '/etc/opendkim/olamidepanel/{{ mail_domain }}']
+    creates: '/etc/opendkim/olamidepanel/{{ mail_domain }}/{{ mail_selector }}.private'
+- name: Create private domain mail storage
+  ansible.builtin.file:
+    path: '/var/vmail/olamidepanel/{{ mail_domain }}'
+    state: directory
+    owner: olamide-vmail
+    group: olamide-vmail
+    mode: '0700'

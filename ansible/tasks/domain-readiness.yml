@@ -1,0 +1,68 @@
+---
+- name: Validate domain name before constructing URLs and paths
+  ansible.builtin.assert:
+    that:
+      - hosting_domain | length <= 253
+      - hosting_domain is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+- name: Inspect public HTTPS with certificate validation
+  ansible.builtin.uri:
+    url: 'https://{{ hosting_domain }}/'
+    method: GET
+    validate_certs: true
+    follow_redirects: safe
+    timeout: 15
+    return_content: false
+  register: domain_https
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+- name: Inspect domain email DNS records
+  ansible.builtin.command:
+    argv: [dig, '+short', '+time=3', '+tries=1', '{{ item.name }}.', '{{ item.type }}']
+  loop:
+    - {name: '{{ hosting_domain }}', type: MX}
+    - {name: '{{ hosting_domain }}', type: TXT}
+    - {name: '_dmarc.{{ hosting_domain }}', type: TXT}
+    - {name: '{{ mail_selector | default("panel") }}._domainkey.{{ hosting_domain }}', type: TXT}
+  register: domain_mail_dns
+  changed_when: false
+  failed_when: false
+  when: hosting_enable_email | default(true) | bool and not ansible_check_mode
+- name: Inspect generated domain mail instructions
+  ansible.builtin.stat:
+    path: '/etc/olamidepanel/mail-dns/{{ hosting_domain }}.txt'
+  register: domain_mail_instructions
+- name: Record observed readiness without claiming complete feature coverage
+  ansible.builtin.set_fact:
+    domain_readiness:
+      domain: '{{ hosting_domain }}'
+      checked_at: '{{ ansible_date_time.iso8601 }}'
+      https_ready: '{{ domain_https.status | default(0) | int >= 200 and domain_https.status | default(0) | int < 400 }}'
+      email_enabled: '{{ hosting_enable_email | default(true) | bool }}'
+      email_dns_ready: >-
+        {{ hosting_enable_email | default(true) | bool and not ansible_check_mode
+        and domain_mail_instructions.stat.exists
+        and (domain_mail_dns.results[0].rc | default(1)) == 0
+        and ((domain_mail_dns.results[0].stdout | default('') | lower).split() | select('equalto', (mail_hostname | lower) + '.') | list | length > 0)
+        and 'v=spf1' in (domain_mail_dns.results[1].stdout | default(''))
+        and 'v=DMARC1' in (domain_mail_dns.results[2].stdout | default(''))
+        and 'v=DKIM1' in (domain_mail_dns.results[3].stdout | default('')) }}
+      external_delivery_tested: false
+      mailbox_login_tested: false
+      dns_values_verified: false
+      check_mode: '{{ ansible_check_mode }}'
+      # Presence checks flag missing records; they do not validate policy/key values.
+      dns_instructions: '/etc/olamidepanel/mail-dns/{{ hosting_domain }}.txt'
+- name: Compute readiness for the checks performed
+  ansible.builtin.set_fact:
+    domain_readiness: '{{ domain_readiness | combine({"ready": domain_readiness.https_ready and (not domain_readiness.email_enabled or domain_readiness.email_dns_ready)}) }}'
+- name: Save this domain result before inspecting the next
+  ansible.builtin.copy:
+    dest: '/etc/olamidepanel/domain-readiness/{{ hosting_domain }}.json'
+    content: '{{ domain_readiness | to_nice_json }}'
+    owner: root
+    group: root
+    mode: '0600'
+- name: Append domain result
+  ansible.builtin.set_fact:
+    sequential_results: '{{ sequential_results + [domain_readiness] }}'

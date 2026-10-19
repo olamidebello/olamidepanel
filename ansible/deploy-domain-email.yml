@@ -124,20 +124,12 @@
         - {path: /var/vmail/olamidepanel, owner: olamide-vmail, group: olamide-vmail, mode: '0700'}
         - {path: /etc/opendkim/olamidepanel, owner: opendkim, group: opendkim, mode: '0700'}
         - {path: /etc/olamidepanel/mail-dns, owner: root, group: root, mode: '0755'}
-    - name: Create per-domain DKIM directories
-      ansible.builtin.file:
-        path: '/etc/opendkim/olamidepanel/{{ item }}'
-        state: directory
-        owner: opendkim
-        group: opendkim
-        mode: '0700'
+    - name: Provision email identity for one domain before the next
+      ansible.builtin.include_tasks: tasks/domain-mail.yml
       loop: '{{ mail_effective_domains }}'
-    - name: Generate persistent per-domain DKIM keys
-      become_user: opendkim
-      ansible.builtin.command:
-        argv: [opendkim-genkey, -b, '2048', -d, '{{ item }}', -s, '{{ mail_selector }}', -D, '/etc/opendkim/olamidepanel/{{ item }}']
-        creates: '/etc/opendkim/olamidepanel/{{ item }}/{{ mail_selector }}.private'
-      loop: '{{ mail_effective_domains }}'
+      loop_control:
+        loop_var: mail_domain
+        label: '{{ mail_domain }}'
     - name: Install managed mail configuration
       ansible.builtin.template:
         src: 'templates/mail/{{ item.src }}.j2'
@@ -213,3 +205,4 @@
         name: '{{ item }}'
         state: restarted
       loop: [opendkim, dovecot, postfix]
+

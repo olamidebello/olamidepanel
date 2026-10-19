@@ -12,3 +12,8 @@ mail_hostname: mail.example.com
 mail_domains_source: panel
 mail_extra_domains: []
 mail_accounts: []
+
+# The sequential entrypoint inspects every active domain by default.
+# This filter selects readiness checks only; shared service policy stays complete.
+hosting_domain_filter: []
+hosting_require_ready: false
