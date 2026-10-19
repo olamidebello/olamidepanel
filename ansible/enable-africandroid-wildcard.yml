@@ -1,0 +1,118 @@
+---
+# Requires authoritative Cloudflare DNS; a registrar alone is insufficient.
+# Store wildcard_cloudflare_token in Ansible Vault, never in this repository.
+- name: Issue and renew shared AfricAndroid wildcard certificate
+  hosts: all
+  become: true
+  vars:
+    wildcard_email: dobcalldemo@gmail.com
+    wildcard_cloudflare_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+    wildcard_zone_id: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID') }}"
+    wildcard_cert_name: africandroid-world-wildcard
+    wildcard_python_root: /opt/olamide-certbot
+  tasks:
+    - name: Require scoped authoritative DNS credentials
+      ansible.builtin.assert:
+        that:
+          - wildcard_cloudflare_token | length > 0
+          - wildcard_zone_id is match('^[a-fA-F0-9]{32}$')
+        fail_msg: Supply Cloudflare Zone ID and a zone-scoped DNS Edit token using Vault or environment. DNS must be authoritative on Cloudflare.
+      no_log: true
+    - name: Verify active Cloudflare zone before requesting certificates
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ wildcard_zone_id }}"
+        headers:
+          Authorization: "Bearer {{ wildcard_cloudflare_token }}"
+        return_content: true
+      register: wildcard_zone
+      failed_when: >-
+        not wildcard_zone.json.success or
+        wildcard_zone.json.result.name != 'africandroid.world' or
+        wildcard_zone.json.result.status != 'active'
+      no_log: true
+    - name: Install isolated Python environment prerequisites
+      ansible.builtin.apt:
+        name: [python3-venv, ca-certificates]
+        state: present
+        update_cache: true
+    - name: Install modern Certbot and matching DNS plugin outside system Python
+      ansible.builtin.pip:
+        name: [certbot==5.8.0, certbot-dns-cloudflare==5.8.0]
+        virtualenv: "{{ wildcard_python_root }}"
+        virtualenv_command: python3 -m venv
+    - name: Create root-only credential directory
+      ansible.builtin.file:
+        path: /etc/letsencrypt/credentials
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Save scoped DNS token for unattended renewal
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/credentials/africandroid-cloudflare.ini
+        owner: root
+        group: root
+        mode: '0600'
+        content: "dns_cloudflare_api_token = {{ wildcard_cloudflare_token }}\n"
+      no_log: true
+    - name: Issue apex and wildcard certificate without repeated retry
+      ansible.builtin.command:
+        argv:
+          - "{{ wildcard_python_root }}/bin/certbot"
+          - certonly
+          - --non-interactive
+          - --agree-tos
+          - --email
+          - "{{ wildcard_email }}"
+          - --cert-name
+          - "{{ wildcard_cert_name }}"
+          - --dns-cloudflare
+          - --dns-cloudflare-credentials
+          - /etc/letsencrypt/credentials/africandroid-cloudflare.ini
+          - --dns-cloudflare-propagation-seconds
+          - '60'
+          - --keep-until-expiring
+          - -d
+          - africandroid.world
+          - -d
+          - '*.africandroid.world'
+      register: wildcard_issue
+      changed_when: "'Successfully received certificate' in wildcard_issue.stdout"
+    - name: Validate shared certificate and key exist
+      ansible.builtin.command:
+        argv: [openssl, x509, -in, "/etc/letsencrypt/live/{{ wildcard_cert_name }}/fullchain.pem", -noout, -checkend, '86400']
+      changed_when: false
+    - name: Install renewal service with nginx validation and reload
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamide-wildcard-renew.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Renew AfricAndroid wildcard certificate
+          Wants=network-online.target
+          After=network-online.target
+          [Service]
+          Type=oneshot
+          ExecStart={{ wildcard_python_root }}/bin/certbot renew --cert-name {{ wildcard_cert_name }} --quiet --deploy-hook "/usr/sbin/nginx -t && /usr/bin/systemctl reload nginx"
+    - name: Install twice-daily renewal timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamide-wildcard-renew.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Check AfricAndroid wildcard renewal twice daily
+          [Timer]
+          OnCalendar=*-*-* 00,12:00:00
+          RandomizedDelaySec=3600
+          Persistent=true
+          [Install]
+          WantedBy=timers.target
+    - name: Enable automated renewal
+      ansible.builtin.systemd:
+        name: olamide-wildcard-renew.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+    - name: Explain activation
+      ansible.builtin.debug:
+        msg: Certificate ready. Run provision-africa-weather.yml with your existing DNS settings to switch country vhosts to the shared certificate. Existing certificates are retained. A rate limit still applies to initial wildcard issuance.
