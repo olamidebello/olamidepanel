@@ -22,6 +22,8 @@ def render(source, destination, country):
     server = replace(server, "'countryCode': 'NG'", "'countryCode': COUNTRY['code']")
     server = replace(server, "r.get('country_code') == 'NG'", "r.get('country_code') == COUNTRY['code']")
     server = replace(server, "'timezone': 'Africa/Lagos'", "'timezone': 'auto'")
+    # HTTP header values must stay ASCII even when display names contain Unicode.
+    server = replace(server, "'User-Agent': 'WeatherNigeria/1.0'", "'User-Agent': 'AfricAndroidWeather/1.0'")
     server = server.replace('Nigerian', name).replace('Nigeria', name)
     (destination / 'server.py').write_text(server)
     (destination / 'country.json').write_text(json.dumps(country, ensure_ascii=False))
