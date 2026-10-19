@@ -45,7 +45,7 @@
       when: not ansible_check_mode
     - name: Report super-admin navigation
       ansible.builtin.debug:
-        msg: Open Administration -> Hosting Domains. All 54 requested editions and WeatherNigeria are listed. Select Country weather to filter. Existing deployment snapshots supply verified status; unverified domains remain pending.
+        msg: Open Domains or Administration -> Hosting Domains as root or super admin. All configured operator domains, country weather editions, panel records and hosting snapshot domains are listed. Select Country weather to filter. Existing deployment snapshots supply verified status; unverified domains remain pending.
   handlers:
     - name: Restart panel for inventory update
       ansible.builtin.systemd:

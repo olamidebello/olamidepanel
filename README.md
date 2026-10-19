@@ -195,3 +195,15 @@ isolated services, nginx, HTTPS and Hosting Domains status reporting:
 [deployment instructions](docs/AFRICA_WEATHER.md),
 [Ansible playbook](ansible/provision-africa-weather.yml),
 [country and domain catalog](ansible/weather/countries.json).
+
+### Update all domains in the GUI
+
+The Domains page displays the complete hosting inventory for root and super-admin accounts, with search, country filtering, status refresh and website links. Personal records and removal controls remain scoped to the signed-in account. The combined list includes operator defaults, all panel domain records and domains exported by hosting automation; inventory entries do not claim DNS or HTTPS readiness.
+
+After pulling this repository on the hosting server, run:
+
+```sh
+ansible-playbook -i localhost, -c local ansible/update-all-domain-gui.yml
+```
+
+For another install directory, append `-e panel_install=/path/to/panel`. Repeat after adding operator defaults or updating the GUI. The playbook backs up replaced files, restarts the panel only when files change and checks the API listener. Existing hosting snapshots are read on each refresh without another deployment.

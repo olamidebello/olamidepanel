@@ -1,0 +1,3 @@
+---
+# Run after pulling the latest repository. Safe to repeat; preserves domain ownership.
+- import_playbook: update-weather-domain-gui.yml
