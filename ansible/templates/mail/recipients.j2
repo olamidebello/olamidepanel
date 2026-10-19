@@ -1,3 +1,4 @@
-{% for account in mail_accounts %}
+{% for account in mail_effective_accounts | default(mail_accounts) %}
 {{ account.address }} OK
 {% endfor %}
+

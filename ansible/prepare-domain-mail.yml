@@ -71,7 +71,7 @@
       no_log: true
     - name: Load generated and existing mailbox hashes into deployment
       ansible.builtin.set_fact:
-        mail_accounts: '{{ (bootstrap_account_data.content | b64decode | from_json).mail_accounts }}'
+        mail_bootstrap_accounts: '{{ (bootstrap_account_data.content | b64decode | from_json).mail_accounts }}'
       no_log: true
     - name: Provision mail hostname A record or write pending DNS plan
       ansible.builtin.command:

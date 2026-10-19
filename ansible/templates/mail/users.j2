@@ -1,3 +1,4 @@
-{% for account in mail_accounts %}
+{% for account in mail_effective_accounts | default(mail_accounts) %}
 {{ account.address }}:{{ account.password_hash }}:{{ ansible_facts.getent_passwd['olamide-vmail'][1] }}:{{ ansible_facts.getent_passwd['olamide-vmail'][2] }}::/var/vmail/olamidepanel/{{ account.address.split('@')[1] }}/{{ account.address.split('@')[0] }}::
 {% endfor %}
+

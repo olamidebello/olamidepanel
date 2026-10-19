@@ -42,6 +42,12 @@ class MailConfigTests(unittest.TestCase):
         self.assertEqual('', self.render('users').strip())
         self.assertEqual('', self.render('recipients').strip())
 
+    def test_generated_accounts_override_empty_operator_list_in_all_maps(self):
+        self.values['mail_accounts'] = []
+        self.values['mail_effective_accounts'] = [dict(address='admin@one.example', password_hash='{SHA512-CRYPT}$6$one')]
+        for template in ('users', 'senders', 'recipients'):
+            self.assertIn('admin@one.example', self.render(template))
+
     def test_dkim_key_paths_are_separate(self):
         keys = self.render('KeyTable')
         self.assertIn('/one.example/panel.private', keys)
@@ -49,3 +55,4 @@ class MailConfigTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

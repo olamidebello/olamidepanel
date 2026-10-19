@@ -24,7 +24,7 @@
         content: >-
           {{ {'mail_hostname': mail_hostname, 'mail_domains_source': mail_domains_source | default('panel'),
           'mail_domains': mail_domains | default([]), 'mail_extra_domains': mail_extra_domains | default([]),
-          'mail_accounts': mail_accounts | default([]), 'mail_selector': mail_selector | default('panel')} | to_nice_json }}
+          'mail_accounts': mail_effective_accounts | default(mail_accounts | default([])), 'mail_selector': mail_selector | default('panel')} | to_nice_json }}
       no_log: true
     - name: Install local mail inventory
       ansible.builtin.copy:
@@ -67,3 +67,4 @@
         state: started
         enabled: true
         daemon_reload: true
+

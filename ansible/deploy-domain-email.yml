@@ -58,17 +58,20 @@
           - item is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
           - item != mail_hostname
       loop: '{{ mail_effective_domains }}'
+    - name: Resolve generated mailboxes independently of operator extra vars
+      ansible.builtin.set_fact:
+        mail_effective_accounts: '{{ mail_bootstrap_accounts | default(mail_accounts) }}'
     - name: Validate mailboxes and password hashes
       ansible.builtin.assert:
         that:
           - item.address is match('^[a-z0-9][a-z0-9._-]{0,63}@(?:[a-z0-9-]+\.)+[a-z]{2,63}$')
           - item.address.split('@')[1] in mail_effective_domains
           - item.password_hash is match('^\{SHA512-CRYPT\}\$6\$[./a-zA-Z0-9$]+$')
-      loop: '{{ mail_accounts }}'
+      loop: '{{ mail_effective_accounts }}'
       no_log: true
     - name: Reject duplicate mailbox addresses
       ansible.builtin.assert:
-        that: mail_accounts | map(attribute='address') | unique | length == mail_accounts | length
+        that: mail_effective_accounts | map(attribute='address') | unique | length == mail_effective_accounts | length
     - name: Inspect existing mail configuration and ownership marker
       ansible.builtin.stat:
         path: '{{ item }}'
@@ -198,7 +201,7 @@
       loop: [25, 587, 993]
     - name: Report activation requirements
       ansible.builtin.debug:
-        msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/587/993. No external delivery has been verified.'
+        msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_effective_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/587/993. No external delivery has been verified.'
   handlers:
     - name: Restart mail services
       ansible.builtin.systemd:
