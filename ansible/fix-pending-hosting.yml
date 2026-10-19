@@ -1,0 +1,32 @@
+---
+# Run: ansible-playbook -i localhost, -c local ansible/fix-pending-hosting.yml
+- name: Repair pending hosting tasks and report remaining blockers
+  hosts: all
+  become: true
+  vars:
+    pending_tls_email: dobcalldemo@gmail.com
+    pending_panel_install: /opt/olamidepanel
+    pending_cloudflare_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+    pending_cloudflare_zone: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID') }}"
+  tasks:
+    - name: Run repairs sequentially with private logs
+      ansible.builtin.script:
+        cmd: "{{ playbook_dir }}/../deploy/fix_pending_hosting.py {{ playbook_dir | quote }}"
+        executable: python3
+      environment:
+        PENDING_EMAIL: "{{ pending_tls_email }}"
+        PENDING_PANEL_INSTALL: "{{ pending_panel_install }}"
+        CLOUDFLARE_API_TOKEN: "{{ pending_cloudflare_token }}"
+        CLOUDFLARE_ZONE_ID: "{{ pending_cloudflare_zone }}"
+      register: pending_result
+      changed_when: (pending_result.stdout | from_json).changed
+      when: not ansible_check_mode
+    - name: Show completed repairs and remaining blockers
+      ansible.builtin.debug:
+        msg: "{{ pending_result.stdout | from_json }}"
+      when: not ansible_check_mode
+    - name: Require all pending tasks to be resolved
+      ansible.builtin.assert:
+        that: (pending_result.stdout | from_json).complete
+        fail_msg: Some tasks are blocked. Review the summary and root-only logs in /var/log/olamidepanel-repair. Successful repairs have been retained.
+      when: not ansible_check_mode
