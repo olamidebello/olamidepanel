@@ -65,9 +65,16 @@
       retries: 10
       delay: 2
       until: backend_health.status | default(0) == 200
+    - name: Inspect shared wildcard certificate
+      ansible.builtin.stat:
+        path: /etc/letsencrypt/live/africandroid-world-wildcard/fullchain.pem
+      register: weather_wildcard_certificate
+    - name: Select shared certificate when available
+      ansible.builtin.set_fact:
+        weather_certificate_name: "{{ 'africandroid-world-wildcard' if weather_wildcard_certificate.stat.exists else domain }}"
     - name: Inspect existing certificate
       ansible.builtin.stat:
-        path: '/etc/letsencrypt/live/{{ domain }}/fullchain.pem'
+        path: '/etc/letsencrypt/live/{{ weather_certificate_name }}/fullchain.pem'
       register: edition_certificate
     - name: Configure nginx with existing TLS preserved
       ansible.builtin.template:
@@ -98,6 +105,7 @@
     - name: Obtain HTTPS certificate
       ansible.builtin.command:
         argv: [certbot, --nginx, --non-interactive, --agree-tos, --redirect, --keep-until-expiring, --cert-name, '{{ domain }}', --email, '{{ tls_email }}', -d, '{{ domain }}']
+      when: not weather_wildcard_certificate.stat.exists
       register: edition_certbot
       changed_when: "'Deploying certificate' in edition_certbot.stdout or 'Successfully' in edition_certbot.stdout"
     - name: Verify trusted public HTTPS and application health
