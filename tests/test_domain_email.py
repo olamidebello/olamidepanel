@@ -48,6 +48,18 @@ class MailConfigTests(unittest.TestCase):
         for template in ('users', 'senders', 'recipients'):
             self.assertIn('admin@one.example', self.render(template))
 
+    def test_opendkim_is_supervised_in_foreground_and_listener_is_checked(self):
+        import yaml
+        play = yaml.safe_load((TEMPLATES.parents[1] / 'deploy-domain-email.yml').read_text())[0]
+        task = next(t for t in play['tasks'] if t['name'] == 'Run OpenDKIM in foreground under direct systemd supervision')
+        unit = task['ansible.builtin.copy']['content']
+        self.assertIn('Type=simple', unit)
+        self.assertIn('PIDFile=\n', unit)
+        self.assertIn('ExecStart=/usr/sbin/opendkim -f -x /etc/opendkim.conf', unit)
+        self.assertIn('User=opendkim', unit)
+        check = next(t for t in play['tasks'] if t['name'] == 'Verify local mail listeners')
+        self.assertIn(8891, check['loop'])
+
     def test_dkim_key_paths_are_separate(self):
         keys = self.render('KeyTable')
         self.assertIn('/one.example/panel.private', keys)

@@ -100,6 +100,32 @@
         policy_rc_d: 101
       environment:
         DEBIAN_FRONTEND: noninteractive
+    - name: Create managed OpenDKIM service override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/opendkim.service.d
+        state: directory
+        mode: '0755'
+    - name: Run OpenDKIM in foreground under direct systemd supervision
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/opendkim.service.d/olamidepanel.conf
+        mode: '0644'
+        content: |
+          # Managed by OlamidePanel: avoid daemon PID-file startup timeouts.
+          [Service]
+          Type=simple
+          PIDFile=
+          ExecStart=
+          ExecStart=/usr/sbin/opendkim -f -x /etc/opendkim.conf
+          RuntimeDirectory=opendkim
+          RuntimeDirectoryMode=0750
+          User=opendkim
+          Group=opendkim
+      register: mail_dkim_unit
+      notify: Restart mail services
+    - name: Load OpenDKIM supervision settings before applying mail configuration
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: mail_dkim_unit.changed
     - name: Create virtual mail group
       ansible.builtin.group:
         name: olamide-vmail
@@ -198,7 +224,7 @@
         host: 127.0.0.1
         port: '{{ item }}'
         timeout: 30
-      loop: [25, 587, 993]
+      loop: [8891, 25, 587, 993]
     - name: Report activation requirements
       ansible.builtin.debug:
         msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_effective_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/587/993. No external delivery has been verified.'
