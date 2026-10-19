@@ -1,0 +1,8 @@
+# Account ID is shown by the super-admin Namecheap API account listing.
+namecheap_account_id: 1
+namecheap_mode: production
+namecheap_zones:
+  - sld: africandroid
+    tld: world
+    hosts: africaweather,weathernigeria
+    address: 181.214.149.146

@@ -1,0 +1,49 @@
+---
+- name: Provision Namecheap DNS with a super-admin saved API account
+  hosts: all
+  become: true
+  vars:
+    namecheap_account_id: 0
+    namecheap_mode: production
+    namecheap_zones: []
+  tasks:
+    - name: Validate selected saved account and DNS zones
+      ansible.builtin.assert:
+        that:
+          - namecheap_account_id | int > 0
+          - namecheap_mode in ['sandbox', 'production']
+          - namecheap_zones is sequence and namecheap_zones is not string and namecheap_zones is not mapping
+          - namecheap_zones | length > 0
+        fail_msg: Save a Namecheap account in the super-admin GUI and supply its ID and the requested DNS zones.
+    - name: Check installed Namecheap GUI backend
+      ansible.builtin.stat:
+        path: /opt/olamidepanel/panel/namecheap.py
+      register: namecheap_backend
+    - name: Require deployed Namecheap GUI backend
+      ansible.builtin.assert:
+        that: namecheap_backend.stat.exists
+        fail_msg: Deploy the updated panel directory and restart olamidepanel first.
+    - name: Install local provisioning adapter
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/provision_namecheap.py'
+        dest: /opt/olamidepanel/provision_namecheap.py
+        owner: root
+        group: olamidepanel
+        mode: '0640'
+    - name: Merge and verify requested DNS records
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv:
+          - /opt/olamidepanel/venv/bin/python
+          - /opt/olamidepanel/provision_namecheap.py
+        stdin: '{{ {"account_id": namecheap_account_id | int, "mode": namecheap_mode, "zones": namecheap_zones} | to_json }}'
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+        PANEL_PAYMENT_KEY: /etc/olamidepanel/payment.key
+      register: namecheap_result
+      changed_when: namecheap_result.rc == 0 and (namecheap_result.stdout | from_json).changed | default(false)
+      when: not ansible_check_mode
+    - name: Report verified DNS results
+      ansible.builtin.debug:
+        msg: '{{ namecheap_result.stdout | from_json }}'
+      when: not ansible_check_mode
