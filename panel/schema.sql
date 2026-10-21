@@ -195,3 +195,18 @@ CREATE TABLE IF NOT EXISTS namecheap_accounts (
  credentials TEXT NOT NULL,
  updated BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS mail_delegations (
+ domain VARCHAR(253) PRIMARY KEY, owner BIGINT NOT NULL,
+ INDEX mail_owner(owner)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS mail_requests (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, address VARCHAR(320) NOT NULL,
+ creator BIGINT NOT NULL, operation VARCHAR(16) NOT NULL,
+ password_hash VARCHAR(255) NOT NULL DEFAULT '',
+ state VARCHAR(24) NOT NULL DEFAULT 'queued', created BIGINT NOT NULL,
+ summary VARCHAR(255) NOT NULL DEFAULT '', INDEX mail_queue(state,id)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS mail_inventory (
+ address VARCHAR(320) PRIMARY KEY, updated BIGINT NOT NULL
+) ENGINE=InnoDB;

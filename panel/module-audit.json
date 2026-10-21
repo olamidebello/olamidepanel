@@ -242,10 +242,10 @@
   {
     "category": "Email",
     "name": "Email Accounts",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing mail tenancy, MTA/IMAP provisioning, storage quotas, authenticated webmail and corresponding API/GUI workflow."
+    "status": "partial",
+    "source": "panel/mail_accounts.py; deploy/mail_account_worker.py; ansible/enable-mailbox-gui.yml",
+    "api": "/api/mail-accounts",
+    "detail": "Approved domain owners can queue mailbox creation, password reset and disable operations. Root broker applies protected mail policy. Requires managed mail deployment and domain delegation; public DNS and delivery need verification."
   },
   {
     "category": "Email",

@@ -85,3 +85,70 @@ automatic multi-file rollback; restore backups before restarting after a failure
 References: [Postfix virtual domains](https://www.postfix.org/VIRTUAL_README.html),
 [Postfix relay control](https://www.postfix.org/SMTPD_ACCESS_README.html),
 [Dovecot 2.3 passwd-file](https://doc.dovecot.org/2.3/configuration_manual/authentication/passwd_file/).
+
+## Domain mailbox GUI
+
+`ansible/enable-mailbox-gui.yml` installs **Email → Email Accounts**, an
+ownership-scoped API, and the root-only policy broker. It requires the existing
+managed email setup above, including `/etc/olamidepanel/mail-policy.json`, a
+trusted mail-host certificate and the reconciliation inventory. It preserves the
+existing account list, adds `afribulkhub.com`, and creates
+`support@afribulkhub.com` with a persistent random password if it does not already
+exist. Existing support passwords are preserved.
+
+From the updated checkout on the hosting server:
+
+```sh
+ansible-playbook -i /etc/olamidepanel/mail-local.ini ansible/enable-mailbox-gui.yml \
+  -e mail_operator_username=YOUR_PANEL_LOGIN
+```
+
+Replace `YOUR_PANEL_LOGIN` with your active panel root or super-admin login. The
+playbook stops mail reconciliation while updating. If installation fails, inspect
+the failed task before restarting `olamidepanel-mail.timer`; it stays stopped to
+avoid concurrent policy writers. An interrupted worker marks in-flight requests
+uncertain rather than replaying them. Failed deployments can leave partially
+updated configuration: inspect services and rerun reconciliation before resubmitting.
+
+New support credentials are in the root-only file
+`/etc/olamidepanel/afribulkhub-support-credentials.json`. Read it locally as root;
+do not post its contents. It contains the shared mail hostname and client ports.
+Rotate the mailbox password in the GUI after retrieving it and remove this initial
+credential file after recording credentials safely; the file is a bootstrap copy,
+not a password-reset history. Existing mailboxes have no recoverable plaintext
+password. Use full mailbox addresses to sign in, IMAPS 993 and SMTP STARTTLS 587.
+There is no webmail in this feature.
+
+The GUI supports create/reset and disable (messages retained), with recent request
+status. The existing 15-minute timer applies queued requests and rechecks the
+requester's active role and approved domain ownership. `applied` means the mail
+playbook succeeded; it does not establish public deliverability. Passwords are
+hashed using SHA512-CRYPT through stdin and never passed in command arguments or
+returned by the API. Completed requests discard hashes. The broker limits domains
+to 100 enabled mailboxes and requesters to 20 pending operations.
+
+For each additional hosted domain, first verify control and mail routing, add it
+to the root-owned mail policy's `mail_extra_domains` without replacing existing
+entries, then delegate it locally:
+
+```sh
+systemctl stop olamidepanel-mail.timer
+# Wait until olamidepanel-mail.service is inactive before changing mail policy.
+/opt/olamidepanel/venv/bin/python /opt/olamidepanel/repo/deploy/mail_account_worker.py \
+  --approve example.com PANEL_USERNAME
+systemctl start olamidepanel-mail.timer
+```
+
+A regular panel account must already own the matching domain inventory record.
+Creating an inventory entry alone does not authorize mail. Existing delegations
+cannot be reassigned through this command: mailbox transfers require operator
+review. Root/super-admin accounts can manage approved domains. Other accounts
+cannot list or change another owner's mailboxes. Inventory removal or transfer
+revokes future mailbox operations; it does not delete existing stored messages or
+implicitly transfer mail access. Operators must separately disable mailboxes when
+offboarding a domain or account.
+
+Publish the generated `/etc/olamidepanel/mail-dns/afribulkhub.com.txt` records,
+including DKIM, and verify the shared hostname's A/PTR records. Test incoming and
+outgoing mail externally before advertising the support address. This installer
+does not change registrar DNS, provider PTR, or firewall rules.

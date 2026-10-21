@@ -17,6 +17,7 @@ import module_manager
 import hosted_domains
 import watchdog
 import namecheap
+import mail_accounts
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -88,6 +89,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(status,value)
                 if self.path=='/api/websites':
                     status,value=websites.handle('GET',self.path,u)
+                    return self.reply(status,value)
+                if self.path=='/api/mail-accounts':
+                    status,value=mail_accounts.handle('GET',u,db)
                     return self.reply(status,value)
                 if self.path=='/api/namecheap':
                     status,value=namecheap.handle('GET',u)
@@ -169,6 +173,9 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/mail-accounts':
+                status,value=mail_accounts.handle('POST',u,db,body)
+                return self.reply(status,value)
             if self.path=='/api/namecheap':
                 status,value=namecheap.handle('POST',u,body)
                 return self.reply(status,value)

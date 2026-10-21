@@ -10,7 +10,7 @@ Use [the hosting-suite playbook](docs/DOMAIN_HOSTING_SUITE.md) to configure exis
 
 ## Domain email automation
 
-Provision SMTP, IMAP, per-domain DKIM and automatic domain discovery with [the domain email playbooks](docs/DOMAIN_EMAIL.md). Mailbox accounts remain operator-managed; DNS and public delivery require deployment verification.
+Provision SMTP, IMAP, per-domain DKIM and automatic domain discovery with [the domain email playbooks](docs/DOMAIN_EMAIL.md). Operator-approved domains support queued mailbox creation, password resets and disabling through Email → Email Accounts. See the domain email guide for installation; DNS and public delivery require deployment verification.
 
 ## Documentation
 

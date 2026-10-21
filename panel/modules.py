@@ -7,7 +7,7 @@ MODULES=[
  ('Payments','partial','Stripe/Paystack hosted adapters and verification. Merchant testing/credentials required; no refunds or renewals.'),
  ('MySQL','implemented','Internal panel database. Customer database provisioning is not implemented.'),
  ('TLS and installation','partial','Panel HTTPS/Nginx deployment and static-site TLS worker. Other customer hosting runtimes remain unavailable.'),
- ('Mail hosting','not implemented','Mailbox, routing, spam filtering, webmail and mail DNS adapters required.'),
+ ('Mail hosting','partial','Managed SMTP/IMAP, DKIM and operator-approved domain mailbox GUI with queued create/reset/disable. DNS delivery verification, spam filtering and webmail remain operator tasks or unavailable.'),
  ('DNS lookups','implemented','Read-only DNS record lookup. No zone configuration changes.'),
  ('DNS hosting','not implemented','Authoritative zones, DNSSEC and provider integration required.'),
  ('Customer databases','not implemented','Tenant database/user provisioning and privileges required.'),

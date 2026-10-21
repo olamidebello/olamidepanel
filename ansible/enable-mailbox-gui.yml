@@ -1,0 +1,89 @@
+---
+- name: Enable domain mailbox management and AfriBulkHub support mailbox
+  hosts: panel_servers
+  become: true
+  tasks:
+    - name: Require operator account and Debian 12
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - mail_operator_username | default('') | length > 0
+        fail_msg: Set mail_operator_username to the panel root or super-admin login.
+    - name: Stop mail reconciliation during installation
+      ansible.builtin.systemd:
+        name: olamidepanel-mail.timer
+        state: stopped
+    - name: Wait for existing mail reconciliation to finish
+      ansible.builtin.command: systemctl is-active olamidepanel-mail.service
+      register: mail_running
+      changed_when: false
+      failed_when: false
+      until: mail_running.stdout not in ['active', 'activating', 'deactivating']
+      retries: 180
+      delay: 5
+    - name: Install current panel code with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/'
+        dest: /opt/olamidepanel/panel/
+        owner: root
+        group: root
+        mode: preserve
+        backup: true
+    - name: Install broker and deployment sources on target
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../{{ item }}/'
+        dest: '/opt/olamidepanel/repo/{{ item }}/'
+        owner: root
+        group: root
+        mode: preserve
+      loop: [panel, deploy, ansible]
+    - name: Add approved support domain to existing protected policy
+      ansible.builtin.command:
+        argv:
+          - /opt/olamidepanel/venv/bin/python
+          - -c
+          - |
+            import json,sys
+            sys.path.insert(0,'/opt/olamidepanel/repo/deploy')
+            from mail_bootstrap import atomic_json
+            p='/etc/olamidepanel/mail-policy.json'
+            data=json.load(open(p))
+            data['mail_extra_domains']=sorted(set(data.get('mail_extra_domains',[])+['afribulkhub.com']))
+            atomic_json(p,data)
+      no_log: true
+    - name: Approve operator and configure persistent support credentials
+      ansible.builtin.command:
+        argv:
+          - /opt/olamidepanel/venv/bin/python
+          - /opt/olamidepanel/repo/deploy/mail_account_worker.py
+          - --approve
+          - afribulkhub.com
+          - '{{ mail_operator_username }}'
+          - --bootstrap-support
+      no_log: true
+    - name: Use mailbox broker for future reconciliation
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamidepanel-mail.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Apply OlamidePanel mailbox requests and reconcile domain mail
+          After=network-online.target mysql.service
+          Wants=network-online.target
+          [Service]
+          Type=oneshot
+          User=root
+          UMask=0077
+          ExecStart=/opt/olamidepanel/venv/bin/python /opt/olamidepanel/repo/deploy/mail_account_worker.py
+          TimeoutStartSec=15min
+    - name: Restart panel and restore scheduled reconciliation
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      loop: [olamidepanel.service, olamidepanel-mail.timer]
