@@ -54,7 +54,8 @@
         content: >-
           {{ {'mail_hostname': mail_hostname, 'panel_public_ipv4': panel_public_ipv4,
           'mail_selector': mail_selector | default('panel'),
-          'mail_extra_domains': mail_extra_domains | default([]),
+          'mail_target_domains': mail_target_domains | default([]),
+          'mail_extra_domains': ((mail_extra_domains | default([])) + (mail_retained_extra_domains | default([]))) | unique | list,
           'mail_bootstrap_localparts': mail_bootstrap_localparts | default(['admin']),
           'mail_accounts': (((prior_mail_data.content | b64decode | from_json).mail_accounts | default([])) if prior_mail_policy.stat.exists else []) + (mail_accounts | default([])),
           'mail_dns': mail_dns | default({'mode': 'manual'}),
@@ -62,7 +63,7 @@
       no_log: true
     - name: Generate persistent random mailbox credentials without printing them
       ansible.builtin.command:
-        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, accounts, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, accounts, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
       no_log: true
     - name: Read generated mailbox hashes from target server
       ansible.builtin.slurp:
@@ -75,7 +76,7 @@
       no_log: true
     - name: Provision mail hostname A record or write pending DNS plan
       ansible.builtin.command:
-        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, address, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, address, --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
       register: bootstrap_address
       changed_when: (bootstrap_address.stdout | from_json).mode == 'rfc2136'
     - name: Require public mail address before certificate issuance

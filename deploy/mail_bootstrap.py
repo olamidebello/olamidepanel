@@ -131,6 +131,8 @@ def main():
     policy = json.loads(Path(args.policy).read_text())
     rows = json.loads(Path(args.inventory).read_text())
     domains = sorted(set(r['domain'] for r in rows if r['active']) | set(policy.get('mail_extra_domains', [])))
+    if args.action == 'domain-dns' and policy.get('mail_target_domains'):
+        domains = sorted(set(policy['mail_target_domains']))
     if any(not NAME.fullmatch(d) or '/' in d for d in domains):
         raise ValueError('Invalid domain inventory')
     if args.action == 'accounts':
@@ -146,6 +148,14 @@ def main():
     desired = records(policy, domains, args.action)
     dns = policy.get('mail_reverse_dns' if args.action == 'ptr' else 'mail_dns', {})
     mode = dns.get('mode', 'manual')
+    if mode == 'namecheap':
+        if args.action == 'ptr':
+            raise ValueError('PTR belongs to your hosting provider, not the forward Namecheap zone')
+        from mail_namecheap import provision
+        report = provision(desired, dns)
+        atomic_json('/etc/olamidepanel/mail-bootstrap-' + args.action + '-report.json', report)
+        print(json.dumps(report))
+        return
     if mode not in ('manual', 'rfc2136'):
         raise ValueError('Supported DNS modes: manual, rfc2136')
     plans = []

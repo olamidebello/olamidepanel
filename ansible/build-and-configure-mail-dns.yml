@@ -1,0 +1,126 @@
+---
+- name: Prepare current mailbox code and Namecheap DNS automation
+  hosts: panel_servers
+  become: true
+  serial: 1
+  tasks:
+    - name: Validate automatic email configuration
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - mail_operator_username | default('') | length > 0
+          - mail_dns.mode | default('') == 'namecheap'
+          - mail_dns.account_id | default(0) | int > 0
+          - mail_dns.zones | default([]) | length > 0
+          - mail_target_domains | default([]) | length > 0
+          - "'afribulkhub.com' in mail_target_domains"
+          - mail_bootstrap_localparts | default([]) | length == 0
+          - mail_target_domains | difference(mail_extra_domains | default([])) | length == 0
+        fail_msg: Use mail-dns-automatic.example.yml with the saved Namecheap account ID and all required zone mappings.
+    - name: Require existing panel runtime
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop: [/opt/olamidepanel/venv/bin/python, /etc/olamidepanel/database.json, /etc/olamidepanel/payment.key]
+      register: automatic_mail_prerequisites
+    - name: Check required panel files
+      ansible.builtin.assert:
+        that: item.stat.exists
+      loop: '{{ automatic_mail_prerequisites.results }}'
+    - name: Inspect existing protected mail policy
+      ansible.builtin.stat:
+        path: /etc/olamidepanel/mail-policy.json
+      register: automatic_prior_policy
+    - name: Read existing mail domain policy
+      ansible.builtin.slurp:
+        src: /etc/olamidepanel/mail-policy.json
+      when: automatic_prior_policy.stat.exists
+      register: automatic_prior_data
+      no_log: true
+    - name: Preserve existing operator mail domains
+      ansible.builtin.set_fact:
+        mail_retained_extra_domains: '{{ ((automatic_prior_data.content | b64decode | from_json).mail_extra_domains | default([])) if automatic_prior_policy.stat.exists else [] }}'
+      no_log: true
+    - name: Install mailbox runtime requirements
+      ansible.builtin.apt:
+        name: [openssl, ansible-core]
+        state: present
+    - name: Inspect existing email reconciliation timer
+      ansible.builtin.command: systemctl list-unit-files olamidepanel-mail.timer --no-legend
+      register: existing_mail_timer
+      changed_when: false
+    - name: Pause existing mail reconciliation
+      ansible.builtin.systemd:
+        name: olamidepanel-mail.timer
+        state: stopped
+      when: "'olamidepanel-mail.timer' in existing_mail_timer.stdout"
+    - name: Wait for an existing reconciliation to finish
+      ansible.builtin.command: systemctl is-active olamidepanel-mail.service
+      register: automatic_mail_running
+      changed_when: false
+      failed_when: false
+      until: automatic_mail_running.stdout not in ['active', 'activating', 'deactivating']
+      retries: 180
+      delay: 5
+    - name: Install current trusted mailbox and deployment sources
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../{{ item }}/'
+        dest: '/opt/olamidepanel/repo/{{ item }}/'
+        owner: root
+        group: root
+        mode: preserve
+        backup: true
+      loop: [panel, deploy, ansible]
+    - name: Build Python bytecode for mail automation
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -m, py_compile, /opt/olamidepanel/repo/deploy/mail_namecheap.py, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, /opt/olamidepanel/repo/deploy/mail_account_worker.py]
+      changed_when: false
+
+# A record -> public resolution -> trusted TLS -> mail services -> mailbox GUI -> DKIM/DNS.
+- import_playbook: prepare-domain-mail.yml
+- import_playbook: enable-domain-email-automation.yml
+- import_playbook: enable-mailbox-gui.yml
+- name: Publish generated mail DNS and record reverse DNS requirements
+  hosts: panel_servers
+  become: true
+  serial: 1
+  tasks:
+    - name: Pause broker while publishing DNS
+      ansible.builtin.systemd:
+        name: olamidepanel-mail.timer
+        state: stopped
+    - name: Wait for broker to finish
+      ansible.builtin.command: systemctl is-active olamidepanel-mail.service
+      register: publishing_mail_running
+      changed_when: false
+      failed_when: false
+      until: publishing_mail_running.stdout not in ['active', 'activating', 'deactivating']
+      retries: 180
+      delay: 5
+    - name: Configure and verify provider DNS records
+      block:
+        - name: Publish MX SPF DKIM DMARC and report PTR requirements
+          ansible.builtin.command:
+            argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, '{{ item }}', --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+          loop: [domain-dns, ptr]
+          register: automatic_mail_dns
+          changed_when: (automatic_mail_dns.stdout | from_json).changed | default(false)
+        - name: Approve additional mailbox domains for the operator
+          ansible.builtin.command:
+            argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_account_worker.py, --approve, '{{ item }}', '{{ mail_operator_username }}']
+          loop: '{{ mail_target_domains | difference(["afribulkhub.com"]) }}'
+          changed_when: false
+      always:
+        - name: Restore mailbox broker scheduling
+          ansible.builtin.systemd:
+            name: olamidepanel-mail.timer
+            state: started
+            enabled: true
+    - name: Report email provisioning result
+      ansible.builtin.debug:
+        msg: >-
+          Mailbox code and SMTP/IMAP configured; Namecheap forward records verified by provider read-back.
+          Support credentials: /etc/olamidepanel/afribulkhub-support-credentials.json (root only).
+          Inspect /etc/olamidepanel/mail-bootstrap-*-report.json for DNS/PTR results.
+          Public propagation, hosting-provider PTR, port access and external message delivery still require verification.

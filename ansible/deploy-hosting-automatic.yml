@@ -8,7 +8,7 @@
   tasks:
     - name: Provision DNS phase or save provider instructions
       ansible.builtin.command:
-        argv: [/usr/bin/python3, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, '{{ item }}', --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_bootstrap.py, '{{ item }}', --policy, /etc/olamidepanel/mail-bootstrap-policy.json, --inventory, /etc/olamidepanel/mail-bootstrap-inventory.json]
       loop: [domain-dns, ptr]
       register: bootstrap_dns
       changed_when: (bootstrap_dns.stdout | from_json).mode == 'rfc2136'

@@ -48,7 +48,7 @@
       when: mail_domains_source == 'panel'
     - name: Resolve operator-approved domain inventory
       ansible.builtin.set_fact:
-        mail_effective_domains: "{{ ((mail_panel_inventory.stdout | default('[]') | from_json | selectattr('active') | map(attribute='domain') | list) if mail_domains_source == 'panel' else mail_domains) + mail_extra_domains }}"
+        mail_effective_domains: "{{ ((mail_panel_inventory.stdout | default('[]') | from_json | selectattr('active') | map(attribute='domain') | list) if mail_domains_source == 'panel' else mail_domains) + mail_extra_domains + (mail_retained_extra_domains | default([])) }}"
     - name: Deduplicate domain inventory
       ansible.builtin.set_fact:
         mail_effective_domains: '{{ mail_effective_domains | unique | sort }}'

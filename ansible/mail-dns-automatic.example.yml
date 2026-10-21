@@ -1,0 +1,26 @@
+# Copy outside the repository; edit for your existing Debian 12 panel host.
+# Namecheap credentials stay encrypted in Administration -> Namecheap Accounts.
+mail_operator_username: REPLACE_WITH_PANEL_ROOT_LOGIN
+panel_public_ipv4: 181.214.149.146
+panel_acme_email: dobcalldemo@gmail.com
+mail_hostname: mail.olamidepanel.com
+mail_selector: panel
+# Only these domains receive MX/SPF/DKIM/DMARC through this workflow.
+# Every target must also be in mail_extra_domains and have an explicit zone below.
+mail_target_domains: [afribulkhub.com]
+mail_extra_domains: [afribulkhub.com]
+mail_bootstrap_localparts: []
+mail_accounts: []
+mail_dns:
+  mode: namecheap
+  account_id: 1  # Replace with the saved GUI account ID.
+  environment: production
+  # Permit setting Custom MX mode. Conflicting existing MX/SPF still stop the run.
+  allow_custom_mx: true
+  zones:
+    - {sld: olamidepanel, tld: com}  # shared mail hostname A record
+    - {sld: afribulkhub, tld: com}   # support domain MX/SPF/DKIM/DMARC
+# PTR is controlled by the hosting provider, not the forward-DNS registrar.
+# Use rfc2136 with server/key_file only if your provider delegates reverse DNS.
+mail_reverse_dns:
+  mode: manual

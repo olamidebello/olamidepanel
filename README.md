@@ -12,6 +12,8 @@ Use [the hosting-suite playbook](docs/DOMAIN_HOSTING_SUITE.md) to configure exis
 
 Provision SMTP, IMAP, per-domain DKIM and automatic domain discovery with [the domain email playbooks](docs/DOMAIN_EMAIL.md). Operator-approved domains support queued mailbox creation, password resets and disabling through Email → Email Accounts. See the domain email guide for installation; DNS and public delivery require deployment verification.
 
+For automatic mailbox installation and Namecheap MX/SPF/DKIM/DMARC setup, use `ansible/build-and-configure-mail-dns.yml` with `ansible/mail-dns-automatic.example.yml`; see the domain email guide.
+
 ## Documentation
 
 - [User manual](docs/USER_MANUAL.md): dashboard, file/domain tasks, account preferences and super-admin controls.

@@ -152,3 +152,72 @@ Publish the generated `/etc/olamidepanel/mail-dns/afribulkhub.com.txt` records,
 including DKIM, and verify the shared hostname's A/PTR records. Test incoming and
 outgoing mail externally before advertising the support address. This installer
 does not change registrar DNS, provider PTR, or firewall rules.
+
+## Automatic build, mailbox installation and Namecheap mail DNS
+
+For an **existing Debian 12 OlamidePanel installation**, use
+`ansible/build-and-configure-mail-dns.yml`. This installs current Python source,
+checks bytecode compilation, publishes the shared mail hostname A record, waits
+for public address resolution, obtains trusted TLS, configures Postfix/Dovecot and
+DKIM, installs the mailbox GUI and `support@afribulkhub.com`, and publishes
+MX/SPF/DKIM/DMARC through Namecheap. Existing mailbox accounts, passwords and
+operator extra domains are retained. No separate compiled frontend is required.
+
+First add your API account under **Administration → Namecheap Accounts** and
+allowlist the hosting server's public IPv4 in Namecheap API access. Domains must
+use Namecheap authoritative DNS; registering a domain there alone is insufficient.
+The workflow reuses the encrypted account and the panel's existing encryption key;
+no API key belongs in the variables file or Git.
+
+On the hosting server, from the updated source checkout:
+
+```sh
+cp ansible/mail-dns-automatic.example.yml /etc/olamidepanel/mail-dns-automatic.yml
+chmod 600 /etc/olamidepanel/mail-dns-automatic.yml
+# Edit the file: panel root login, saved account ID, public IP, ACME email,
+# shared mail hostname, target domains and their explicit SLD/TLD zone mappings.
+ansible-playbook -i /etc/olamidepanel/mail-local.ini \
+  ansible/build-and-configure-mail-dns.yml \
+  -e @/etc/olamidepanel/mail-dns-automatic.yml
+```
+
+For a first mail installation without that inventory, create a protected inventory
+file containing:
+
+```ini
+[panel_servers]
+localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+```
+
+Pass that file with `-i` instead. Run as root or with working privilege escalation.
+The example uses `mail.olamidepanel.com` and `afribulkhub.com`; replace them when
+needed. Only `mail_target_domains` receive mail-domain DNS changes. Include each
+in `mail_extra_domains` and map both their authoritative zones and the shared
+mail hostname's zone. Explicit mappings also support names such as `example.co.uk`;
+the script never guesses the public suffix. Rerun after adding a domain to these
+lists to install keys, publish its records and approve its operator mailbox GUI.
+
+Unrelated records and their TTL/MX metadata are retained. Matching records are
+idempotent. Conflicting MX/SPF/DKIM or a mail-host AAAA/CNAME/ALIAS stops the run;
+migrate an existing mail provider explicitly. Existing single DMARC policies are
+preserved, including stricter policies. `allow_custom_mx: true` explicitly permits
+switching the target zone to Custom MX; it does not bypass record conflicts.
+Unsupported records (including CAA if the API representation cannot be preserved)
+and Dynamic DNS also require manual review rather than zone replacement.
+
+Each phase preflights all its zones, checks for intervening changes and reads back
+the full zone after writing. Namecheap has no atomic compare-and-swap here: avoid
+concurrent DNS editing. Updates across zones or phases are not transactional;
+a failure can leave earlier changes applied. Inspect provider DNS and the phase
+reports before retrying. Reruns preserve persistent DKIM keys and mailbox passwords.
+The workflow pauses mail reconciliation for installation; an early failure leaves
+it paused for inspection. The final DNS phase restores the timer even on failure.
+
+Forward-DNS provider read-back does not prove public propagation or email delivery.
+The hostname must resolve publicly before ACME succeeds. PTR defaults to a pending
+provider instruction report because the hosting provider controls reverse DNS;
+set `mail_reverse_dns` to the existing RFC2136 adapter only with delegated reverse
+zone credentials. Provider/host firewalls must allow TCP 25, 587 and 993, including
+outbound 25. Finally test incoming/outgoing messages externally and inspect
+SPF/DKIM/DMARC results. This workflow does not claim live deployment or public
+message delivery from a successful code build alone.
