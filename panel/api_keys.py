@@ -95,3 +95,27 @@ def handle(method, user, body=None):
         finally:
             if os.path.exists(temp): os.unlink(temp)
         return 200, {'ok': True, 'id': row['id'], 'event': event, 'integration': 'vault_only'}
+
+
+def resolve_openai(key_id, domain):
+    """Server-only resolver; no HTTP route returns this value."""
+    root = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel'))
+    path = root / 'api-provider-keys.json'
+    lockpath = root / 'api-provider-keys.lock'
+    if path.is_symlink() or lockpath.is_symlink():
+        raise ValueError('Invalid vault storage path')
+    with lockpath.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        state = json.loads(path.read_text()) if path.exists() else {'keys': []}
+        row = next((r for r in state['keys'] if r['id'] == key_id), None)
+        if not row or row['provider'] != 'openai' or not row['enabled']:
+            raise ValueError('Selected OpenAI credential is disabled or unavailable')
+        if row['expires'] and row['expires'] <= int(time.time()):
+            raise ValueError('Selected OpenAI credential has expired')
+        if domain not in row['domains']:
+            raise ValueError('OpenAI credential is not assigned to this domain')
+        try:
+            cipher = Fernet(Path(os.environ.get('PANEL_PAYMENT_KEY', '/etc/olamidepanel/payment.key')).read_bytes().strip())
+            return cipher.decrypt(row['encrypted_secret'].encode()).decode()
+        except Exception:
+            raise ValueError('OpenAI credential cannot be decrypted') from None

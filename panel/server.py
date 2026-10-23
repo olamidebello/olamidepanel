@@ -19,6 +19,7 @@ import watchdog
 import namecheap
 import mail_accounts
 import api_keys
+import ai_billing
 import domain_marketplace
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
@@ -41,6 +42,7 @@ def password_hash(password, salt):
 def initialize():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     initialize_schema()
+    ai_billing.initialize()
 
 def home(uid):
     path = DATA / 'homes' / str(uid)
@@ -100,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path=='/api/domain-marketplaces':
                     if not allowed(u,'users.manage'):return self.reply(403,{'error':'Super-admin access required'})
                     return self.reply(200,domain_marketplace.handle('GET',u,db=db))
+                if self.path=='/api/ai-services':return self.reply(200,ai_billing.handle('GET',u,db=db))
                 if self.path=='/api/provider-keys':
                     status,value=api_keys.handle('GET',u)
                     return self.reply(status,value)
@@ -189,6 +192,7 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
             if self.path=='/api/domain-marketplaces':
                 return self.reply(202,domain_marketplace.handle('POST',u,body,db))
+            if self.path=='/api/ai-services':return self.reply(200,ai_billing.handle('POST',u,body,db))
             if self.path=='/api/provider-keys':
                 status,value=api_keys.handle('POST',u,body)
                 if status==200:

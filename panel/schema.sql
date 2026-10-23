@@ -236,3 +236,44 @@ CREATE TABLE IF NOT EXISTS domain_marketplace_orders (
  order_id BIGINT PRIMARY KEY,
  domain VARCHAR(253) CHARACTER SET ascii NOT NULL
 ) ENGINE=InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS ai_service_config (
+ id INT PRIMARY KEY,
+ config TEXT NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS ai_balances (
+ user_id BIGINT PRIMARY KEY,
+ balance DECIMAL(24,10) NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS ai_requests (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ owner BIGINT NOT NULL,
+ request_key VARCHAR(64) CHARACTER SET ascii NOT NULL,
+ fingerprint CHAR(64) CHARACTER SET ascii NOT NULL,
+ domain VARCHAR(253) CHARACTER SET ascii NOT NULL,
+ model VARCHAR(100) CHARACTER SET ascii NOT NULL,
+ rate_snapshot TEXT NOT NULL,
+ state VARCHAR(24) NOT NULL,
+ reserved DECIMAL(24,10) NOT NULL,
+ buy_cost DECIMAL(24,10),
+ user_charge DECIMAL(24,10),
+ input_tokens BIGINT,
+ cached_tokens BIGINT,
+ output_tokens BIGINT,
+ provider_id VARCHAR(150) NOT NULL DEFAULT '',
+ encrypted_response MEDIUMTEXT,
+ created BIGINT NOT NULL,
+ updated BIGINT NOT NULL,
+ UNIQUE KEY ai_user_request(owner,request_key)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS ai_balance_ledger (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ request_key VARCHAR(64) CHARACTER SET ascii NOT NULL,
+ amount DECIMAL(24,10) NOT NULL,
+ reason VARCHAR(250) NOT NULL,
+ actor VARCHAR(64) NOT NULL,
+ created BIGINT NOT NULL,
+ UNIQUE KEY ai_credit_request(user_id,request_key)
+) ENGINE=InnoDB;

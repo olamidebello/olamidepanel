@@ -22,7 +22,7 @@
         group: root
         mode: '0644'
         backup: true
-      loop: [api_keys.py, domain_marketplace.py, marketplace.py, payments.py, server.py, module_manager.py, schema.sql, module-audit.json, static/app.js]
+      loop: [ai_billing.py, api_keys.py, domain_marketplace.py, marketplace.py, payments.py, server.py, module_manager.py, schema.sql, module-audit.json, static/app.js]
       notify: Restart panel
     - name: Validate backend syntax
       ansible.builtin.command:
@@ -31,7 +31,7 @@
     - name: Add marketplace deployment tables without changing existing rows
       become_user: olamidepanel
       ansible.builtin.command:
-        argv: [/opt/olamidepanel/venv/bin/python, -c, 'import sys; sys.path.insert(0,"/opt/olamidepanel/panel"); import domain_marketplace; domain_marketplace.initialize()']
+        argv: [/opt/olamidepanel/venv/bin/python, -c, 'import sys; sys.path.insert(0,"/opt/olamidepanel/panel"); import domain_marketplace; domain_marketplace.initialize(); import ai_billing; ai_billing.initialize()']
         chdir: /tmp
       changed_when: false
     - name: Apply panel update

@@ -1402,10 +1402,10 @@
   {
     "category": "Integrations",
     "name": "AI Services",
-    "status": "not implemented",
-    "source": "panel/static/app.js (planned card only)",
-    "api": "None",
-    "detail": "Missing provider software/license or API credentials plus tested integration and GUI workflow."
+    "status": "partial",
+    "source": "panel/ai_billing.py",
+    "api": "/api/ai-services",
+    "detail": "Metered text chat with prepaid AI balance reservations, reported token usage, immutable buying rates and 30% markup. Admin grants credits after separate payment; no automatic AI balance top-up or hosted-app integration."
   },
   {
     "category": "Administration",
@@ -1454,5 +1454,13 @@
     "source": "panel/namecheap.py",
     "api": "/api/namecheap",
     "detail": "Encrypted registrar accounts, domain queries and explicit DNS provisioning; requires provider credentials and allowlisted server IP."
+  },
+  {
+    "category": "Administration",
+    "name": "AI Billing & Pricing",
+    "status": "partial",
+    "source": "panel/ai_billing.py",
+    "api": "/api/ai-services",
+    "detail": "Metered text chat with prepaid AI balance reservations, reported token usage, immutable buying rates and 30% markup. Admin grants credits after separate payment; no automatic AI balance top-up or hosted-app integration."
   }
 ]

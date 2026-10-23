@@ -1,0 +1,10 @@
+---
+- import_playbook: enable-api-key-manager.yml
+
+- name: Report metered AI configuration steps
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Explain billing setup
+      ansible.builtin.debug:
+        msg: 'Open API Providers & Keys to enable your existing OpenAI key and assign service domains. Under AI Billing & Pricing choose that key, exact text-chat model snapshot, verified buying USD rates per 1M input/cached/output tokens, output cap and service domains. The markup is fixed at 30%. Record paid/admin-granted AI balance credits before users send requests under AI Services. No secret is created or printed by this playbook; live requests require explicit user billing confirmation.'
