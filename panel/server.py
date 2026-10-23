@@ -131,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200, [dict(r) for r in rows])
                 if self.path == '/api/metrics':
                     usage = shutil.disk_usage(DATA)
-                    return self.reply(200, {'disk_total':usage.total,'disk_used':usage.used,'load':os.getloadavg(), 'hostname':os.uname().nodename})
+                    return self.reply(200, {'disk_total':usage.total,'disk_used':usage.used,'disk_available':usage.free,'disk_used_percent':round(usage.used / usage.total * 100, 1) if usage.total else 0,'disk_path':str(DATA),'load':os.getloadavg(), 'hostname':os.uname().nodename})
                 if self.path == '/api/module-manager':
                     if not allowed(u,'users.manage'):return self.reply(403,{'error':'Super-admin access required'})
                     return self.reply(200,module_manager.report(u,db))
