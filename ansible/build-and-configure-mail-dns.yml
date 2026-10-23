@@ -50,6 +50,7 @@
       ansible.builtin.command: systemctl list-unit-files olamidepanel-mail.timer --no-legend
       register: existing_mail_timer
       changed_when: false
+      failed_when: existing_mail_timer.rc != 0 and not (existing_mail_timer.rc == 1 and existing_mail_timer.stdout | trim == "" and existing_mail_timer.stderr | trim == "")
     - name: Pause existing mail reconciliation
       ansible.builtin.systemd:
         name: olamidepanel-mail.timer
