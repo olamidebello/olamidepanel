@@ -33,6 +33,11 @@ class MailConfigTests(unittest.TestCase):
         self.assertIn('smtpd_reject_unlisted_recipient = yes', main)
         master = self.render('master.cf')
         self.assertIn('smtpd_tls_security_level=encrypt', master)
+        implicit = master.split('465 inet', 1)[1].split('pickup unix', 1)[0]
+        for requirement in ('smtpd_tls_wrappermode=yes', 'smtpd_sasl_auth_enable=yes',
+                            'smtpd_relay_restrictions=permit_sasl_authenticated,reject',
+                            'reject_authenticated_sender_login_mismatch'):
+            self.assertIn(requirement, implicit)
         self.assertIn('smtpd_relay_restrictions=permit_sasl_authenticated,reject', master)
         self.assertIn('reject_authenticated_sender_login_mismatch', master)
         self.assertIn('admin@one.example admin@one.example', self.render('senders'))

@@ -224,10 +224,10 @@
         host: 127.0.0.1
         port: '{{ item }}'
         timeout: 30
-      loop: [8891, 25, 587, 993]
+      loop: [8891, 25, 465, 587, 993]
     - name: Report activation requirements
       ansible.builtin.debug:
-        msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_effective_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/587/993. No external delivery has been verified.'
+        msg: 'Configured {{ mail_effective_domains | length }} domains and {{ mail_effective_accounts | length }} mailboxes. Publish records in /etc/olamidepanel/mail-dns, append each domain DKIM TXT file, configure provider PTR and allow TCP 25/465/587/993. No external delivery has been verified.'
   handlers:
     - name: Restart mail services
       ansible.builtin.systemd:

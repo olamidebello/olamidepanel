@@ -1,5 +1,5 @@
 ---
-- name: Enable domain mailbox management and AfriBulkHub support mailbox
+- name: Enable domain mailbox management for approved domains
   hosts: panel_servers
   become: true
   tasks:
@@ -50,18 +50,24 @@
             from mail_bootstrap import atomic_json
             p='/etc/olamidepanel/mail-policy.json'
             data=json.load(open(p))
-            data['mail_extra_domains']=sorted(set(data.get('mail_extra_domains',[])+['afribulkhub.com']))
+            data['mail_extra_domains']=sorted(set(data.get('mail_extra_domains',[])+json.loads(sys.argv[1])))
             atomic_json(p,data)
+          - "{{ mail_gui_domains | default(['afribulkhub.com']) | to_json }}"
       no_log: true
-    - name: Approve operator and configure persistent support credentials
+    - name: Approve operator for each selected domain
       ansible.builtin.command:
         argv:
           - /opt/olamidepanel/venv/bin/python
           - /opt/olamidepanel/repo/deploy/mail_account_worker.py
           - --approve
-          - afribulkhub.com
+          - '{{ item }}'
           - '{{ mail_operator_username }}'
-          - --bootstrap-support
+      no_log: true
+      loop: "{{ mail_gui_domains | default(['afribulkhub.com']) }}"
+    - name: Preserve legacy support mailbox bootstrap when explicitly selected
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/mail_account_worker.py, --approve, afribulkhub.com, '{{ mail_operator_username }}', --bootstrap-support]
+      when: mail_gui_domains is not defined
       no_log: true
     - name: Use mailbox broker for future reconciliation
       ansible.builtin.copy:

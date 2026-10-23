@@ -221,3 +221,46 @@ zone credentials. Provider/host firewalls must allow TCP 25, 587 and 993, includ
 outbound 25. Finally test incoming/outgoing messages externally and inspect
 SPF/DKIM/DMARC results. This workflow does not claim live deployment or public
 message delivery from a successful code build alone.
+
+## Provision the recovered hosting domains
+
+`ansible/provision-all-domain-email.yml` removes the legacy single-domain
+bootstrap restriction. Copy `ansible/all-domain-email.example.yml` to
+`/root/all-domain-email.yml`, restrict it to mode 0600, and replace
+`mail_operator_username` with the existing panel root/super-admin login.
+Review the selected domain list before running. Active panel domains are also
+included by the existing `mail_domains_source: panel` reconciliation policy.
+For a strictly selected inventory use `mail_domains_source: inventory` and
+`mail_domains: []` (the approved extras provide that inventory).
+
+First point `mail.olamidepanel.com` A to `154.16.170.86`, remove a conflicting
+AAAA record, and allow inbound HTTP for certificate issuance. Then run:
+
+```sh
+ansible-playbook -i 'localhost,' -c local ansible/provision-all-domain-email.yml \
+  -e @/root/all-domain-email.yml
+```
+
+The installer preserves authoritative mailbox hashes, existing mailbox data and
+DKIM keys; generates postmaster, abuse and support accounts with random initial
+passwords; obtains a trusted mail-host certificate; enables SMTP 25, authenticated
+SMTP 587/STARTTLS and 465/implicit TLS, IMAP 993; approves each selected domain in
+the Email Accounts GUI; and installs the existing fifteen-minute reconciliation
+broker. Use the complete email address as the mail-client username. The common
+incoming/outgoing server name is `mail.olamidepanel.com`.
+
+Initial generated passwords are saved only in the root-readable
+`/etc/olamidepanel/mail-bootstrap-credentials.json`; use the GUI to reset passwords
+without disclosing that file. Password resets make saved initial passwords stale.
+DNS instructions and verification results are in
+`/etc/olamidepanel/mail-dns/` and `mail-bootstrap-*-report.json`. Manual DNS mode
+reports required MX, SPF, DKIM, DMARC and PTR records without changing provider
+records. Ask the server provider to set reverse DNS for the server IP to the mail
+hostname. Open the mail ports in the provider firewall and check outbound port 25.
+Do not change MX for a domain still receiving mail on another server until ready
+to cut over. This provisions new mailboxes; it does not migrate old messages.
+
+This is a Postfix/Dovecot hosting stack, not cPanel. Roundcube webmail, POP3,
+mailbox quotas, forwarding/aliases, vacation replies, spam filtering, mailing
+lists and external delivery tests are not installed by this entry point. A
+successful playbook verifies local service availability, not inbox placement.

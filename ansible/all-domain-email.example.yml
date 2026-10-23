@@ -1,0 +1,29 @@
+# Copy to /root/all-domain-email.yml and set the actual panel administrator login.
+mail_operator_username: owner
+mail_hostname: mail.olamidepanel.com
+panel_public_ipv4: 154.16.170.86
+panel_acme_email: dobcalldemo@gmail.com
+hosting_enable_email: true
+mail_domains_source: panel
+mail_selector: panel
+mail_bootstrap_localparts: [postmaster, abuse, support]
+# Explicitly approved hosted domains; omit any domain whose email stays elsewhere.
+mail_target_domains: &domains
+  - olamidepanel.com
+  - africanappsstore.space
+  - africanbrowser.com
+  - olamideolatayobello.com
+  - nekkeddating.com
+  - jobs.africandroid.world
+  - digimarketing.olamidepanel.com
+  - justisolve.com
+  - africancreativity.io
+  - olamidemedical.health
+  - africandroid.world
+  - aicourtsystem.com
+  - dobhrap.com
+mail_extra_domains: *domains
+# Manual mode never changes provider DNS. Set Namecheap account_id and zones
+# using mail-dns-automatic.example.yml if provider automation is wanted.
+mail_dns: {mode: manual}
+mail_reverse_dns: {mode: manual}
