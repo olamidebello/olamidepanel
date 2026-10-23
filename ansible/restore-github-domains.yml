@@ -1,0 +1,180 @@
+---
+# Run locally on the NEW host after deploy-bare-debian12.yml has installed the panel.
+# ansible-playbook -i localhost, -c local ansible/restore-github-domains.yml
+# Override/add mappings with -e @/root/domain-restore.json (restore_projects list).
+# Code recovery only: migrate databases/uploads/secrets separately BEFORE public cutover.
+- name: Recover domain application sources and deploy supported projects
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    restore_ipv4: 154.16.170.86
+    restore_email: dobcalldemo@gmail.com
+    restore_root: /var/lib/olamide-domain-restore
+    restore_projects:
+      - {domain: africanappsstore.space, repo: africanappsstore, kind: store, service: africanappsstore, user: africanstore, port: 18081, health: /api/health}
+      - {domain: africanbrowser.com, repo: AfricanBrowser, kind: browser}
+      - {domain: olamideolatayobello.com, repo: DOBHRAP, kind: dobhrap, service: dobhrap, user: dobhrap, port: 18761, health: /health}
+      - {domain: nekkeddating.com, repo: Nekked-Dating, kind: dating, service: nekkeddating, user: nekkeddating, port: 18083, health: /}
+      - {domain: jobs.africandroid.world, repo: Africajobs, playbook: deploy/host-olamidepanel.yml, variables: {jobs_port: 8098}}
+      - {domain: digimarketing.olamidepanel.com, repo: digimarketing, playbook: ansible/deploy.yml, variables: {digi_port: 18840}}
+      - {domain: justisolve.com, repo: justisolve, playbook: ansible/hosting.yml, variables: {app_port: 18082}}
+      - {domain: africancreativity.io, repo: africancreativity}
+      - {domain: olamidemedical.health, repo: Olamidemedical}
+      - {domain: africandroid.world, repo: africandroid}
+      - {domain: aicourtsystem.com, repo: aicourtsystem}
+      - {domain: dobhrap.com, repo: DOBHRAP}
+  tasks:
+    - name: Require Debian 12 and local execution
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - ansible_connection | default('ssh') == 'local'
+          - not ansible_check_mode
+        fail_msg: Run ON the new Debian 12 host with -i localhost, -c local. Use --syntax-check for validation.
+    - name: Require installed panel before recovering applications
+      ansible.builtin.stat:
+        path: /etc/olamidepanel/database.json
+      register: restore_panel
+    - name: Explain missing panel prerequisite
+      ansible.builtin.assert:
+        that: restore_panel.stat.exists
+        fail_msg: Install Olamidepanel with deploy-bare-debian12.yml first.
+    - name: Install recovery prerequisites
+      ansible.builtin.apt:
+        name: [ansible-core, git, python3, python3-venv, python3-pip, python3-dnspython, ca-certificates, nginx, certbot, python3-certbot-nginx, curl, acl, rsync, unzip]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Create private recovery workspace
+      ansible.builtin.file:
+        path: '{{ restore_root }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Save domain recovery manifest
+      ansible.builtin.copy:
+        dest: '{{ restore_root }}/manifest.json'
+        owner: root
+        group: root
+        mode: '0600'
+        content: '{{ {"ipv4": restore_ipv4, "email": restore_email, "projects": restore_projects, "root": restore_root, "panel_source": (playbook_dir + "/..")} | to_nice_json }}'
+      no_log: true
+    - name: Recover projects sequentially and retain individual outcomes
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, '-', '{{ restore_root }}/manifest.json']
+        stdin: |
+          import fcntl, ipaddress, json, os, re, socket, subprocess, sys, time
+          from pathlib import Path
+          os.umask(0o077)
+          cfg=json.loads(Path(sys.argv[1]).read_text())
+          root=Path(cfg['root'])
+          lock=(root/'restore.lock').open('w')
+          fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+          ipaddress.IPv4Address(cfg['ipv4'])
+          assert re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',cfg['email']), 'Invalid email'
+          projects=cfg['projects']
+          assert len({p['domain'] for p in projects})==len(projects), 'Duplicate domains'
+          for p in projects:
+              assert re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}',p['domain']), 'Invalid domain'
+              assert re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*',p['repo']) and '..' not in p['repo'], 'Invalid repo'
+              if p.get('playbook'):
+                  rel=Path(p['playbook'])
+                  assert not rel.is_absolute() and '..' not in rel.parts, 'Unsafe playbook path'
+          results=[]
+          supported=[]
+          def save():
+              tmp=root/'report.tmp'
+              tmp.write_text(json.dumps({'new_ipv4':cfg['ipv4'],'updated_at':int(time.time()),'data_restored':False,'domains':results},indent=2)+'\n')
+              tmp.replace(root/'report.json')
+          def run(args,log,cwd=None):
+              with log.open('a') as out:
+                  subprocess.run(args,cwd=cwd,stdout=out,stderr=subprocess.STDOUT,check=True,
+                                 timeout=7200,env=dict(os.environ,GIT_TERMINAL_PROMPT='0',ANSIBLE_NOCOLOR='1'),stdin=subprocess.DEVNULL)
+          def deploy(playbook,variables,log,cwd):
+              # Secret values remain in root-only files, never process arguments.
+              v=root/(log.stem+'-vars.json')
+              v.write_text(json.dumps(variables))
+              args=['ansible-playbook','-i','localhost,','-c','local',str(playbook),'-e','@'+str(v)]
+              run(args+['--syntax-check'],log,cwd)
+              run(args,log,cwd)
+          for p in projects:
+              domain=p['domain']; log=root/(domain+'.log')
+              r={'domain':domain,'repository':'olamidebello/'+p['repo'],'status':'pending','log':str(log)}
+              results.append(r)
+              try:
+                  dest=root/'sources'/p['repo']
+                  url='https://github.com/olamidebello/'+p['repo']+'.git'
+                  dest.parent.mkdir(exist_ok=True)
+                  if not dest.exists(): run(['git','clone','--depth','1',url,str(dest)],log)
+                  else:
+                      origin=subprocess.check_output(['git','-C',str(dest),'remote','get-url','origin'],text=True).strip()
+                      assert origin==url, 'Unexpected Git origin'
+                      assert not subprocess.check_output(['git','-C',str(dest),'status','--porcelain']), 'Local changes preserved; update refused'
+                      run(['git','-C',str(dest),'pull','--ff-only'],log)
+                  r['commit']=subprocess.check_output(['git','-C',str(dest),'rev-parse','HEAD'],text=True).strip()
+                  r['source']=str(dest)
+                  if not p.get('kind') and not p.get('playbook'):
+                      r['status']='source_recovered_requires_adapter'
+                      continue
+                  try:
+                      addresses={a[4][0] for a in socket.getaddrinfo(domain,443,type=socket.SOCK_STREAM)}
+                  except socket.gaierror: addresses=set()
+                  if addresses!={cfg['ipv4']}:
+                      r.update(status='source_recovered_waiting_dns',dns=sorted(addresses))
+                      continue
+                  if p.get('kind'):
+                      s=dict(p,repo='olamidebello/'+p['repo'])
+                      s.pop('variables',None)
+                      supported.append(s)
+                      r['status']='queued'
+                      continue
+                  playbook=dest/p['playbook']
+                  assert playbook.is_file(), 'Configured native installer missing'
+                  variables=dict(p.get('variables',{}))
+                  variables.update(public_ip=cfg['ipv4'],deployment_ipv4=cfg['ipv4'],
+                      domain=domain,jobs_domain=domain,digi_domain=domain,
+                      jobs_admin_email=cfg['email'],digi_tls_email=cfg['email'],
+                      ansible_python_interpreter='/usr/bin/python3')
+                  deploy(playbook,variables,log,dest)
+                  # Check public certificate and local vhost; installers may exit with pending TLS.
+                  run(['curl','--fail','--silent','--show-error','--max-time','20','--resolve',domain+':443:127.0.0.1','https://'+domain+'/', '-o','/dev/null'],log)
+                  r['status']='code_deployed_https_verified'
+              except Exception as exc:
+                  r.update(status='needs_attention',error=type(exc).__name__)
+              finally: save()
+          if supported:
+              supported_started=int(time.time())
+              log=root/'supported-sites.log'
+              try:
+                  source=Path(cfg['panel_source']).resolve()
+                  deploy(source/'ansible/deploy-all-github-sites.yml',{
+                      'deployment_sites':supported,'deployment_ipv4':cfg['ipv4'],
+                      'deployment_email':cfg['email'],'deployment_auto_update':False,
+                      'ansible_python_interpreter':'/usr/bin/python3'},log,source)
+              except Exception:
+                  pass  # Read each site's actual outcome, including partial successes.
+              status=Path('/var/lib/olamide-github-deploy/status.json')
+              try: outcomes={p['domain']:p for p in json.loads(status.read_text())}
+              except (OSError,ValueError): outcomes={}
+              for r in results:
+                  if r['status']=='queued':
+                      outcome=outcomes.get(r['domain'],{})
+                      r.update(status='code_deployed_https_verified' if outcome.get('status')=='https_ready' and outcome.get('checked_at',0)>=supported_started else 'needs_attention',log=str(log))
+              save()
+          print(json.dumps({'report':str(root/'report.json'),'domains':[{'domain':r['domain'],'status':r['status']} for r in results]},indent=2))
+          sys.exit(0 if all(r['status']=='code_deployed_https_verified' for r in results) else 2)
+      async: 28800
+      poll: 10
+      register: restore_run
+      changed_when: true
+      failed_when: false
+    - name: Show recovery outcomes
+      ansible.builtin.debug:
+        msg: '{{ restore_run.stdout | default(restore_run.msg | default("No output")) }}'
+    - name: Flag incomplete recovery without discarding successful sites
+      ansible.builtin.assert:
+        that: restore_run.rc | default(1) == 0
+        fail_msg: 'Recovery is incomplete. Read {{ restore_root }}/report.json and its root-only per-domain logs. Source recovery does not restore databases, uploads, mailbox contents or secrets. No DNS records or scheduled updates were created.'
