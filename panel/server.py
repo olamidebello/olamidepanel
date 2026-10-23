@@ -18,6 +18,8 @@ import hosted_domains
 import watchdog
 import namecheap
 import mail_accounts
+import api_keys
+import domain_marketplace
 
 DATA = Path(os.environ.get('PANEL_DATA', '/var/lib/olamidepanel')).resolve()
 STATIC = Path(__file__).parent / 'static'
@@ -73,6 +75,11 @@ class Handler(BaseHTTPRequestHandler):
         return session
     def do_GET(self):
         try:
+            if self.path.startswith('/storefront/'):
+                from payments import public_url
+                try: payload=domain_marketplace.storefront(self.path.removeprefix('/storefront/'), public_url())
+                except ValueError: return self.reply(404,{'error':'Marketplace unavailable'})
+                self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Security-Policy',"default-src 'none'; style-src https:; frame-ancestors 'none'; base-uri 'none'"); self.end_headers(); self.wfile.write(payload); return
             if self.path.startswith('/api/'):
                 u = self.user()
                 if not u: return self.reply(401, {'error':'Sign in required'})
@@ -89,6 +96,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(status,value)
                 if self.path=='/api/websites':
                     status,value=websites.handle('GET',self.path,u)
+                    return self.reply(status,value)
+                if self.path=='/api/domain-marketplaces':
+                    if not allowed(u,'users.manage'):return self.reply(403,{'error':'Super-admin access required'})
+                    return self.reply(200,domain_marketplace.handle('GET',u,db=db))
+                if self.path=='/api/provider-keys':
+                    status,value=api_keys.handle('GET',u)
                     return self.reply(status,value)
                 if self.path=='/api/mail-accounts':
                     status,value=mail_accounts.handle('GET',u,db)
@@ -132,13 +145,14 @@ class Handler(BaseHTTPRequestHandler):
                     with db() as con: rows=con.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100').fetchall()
                     return self.reply(200,[dict(x) for x in rows])
                 return self.reply(404, {'error':'Unknown operation'})
-            name = {'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.jpg':'logo.jpg','/terms':'terms.html','/privacy':'privacy.html','/copyright':'copyright.html'}.get(self.path)
+            name = {'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.jpg':'logo.jpg','/terms':'terms.html','/privacy':'privacy.html','/copyright':'copyright.html'}.get('/' if self.path.startswith('/?marketplace_domain=') else self.path)
             if not name: return self.reply(404, {'error':'Not found'})
             payload=(STATIC/name).read_bytes()
             self.send_response(200)
             self.send_header('Content-Type', {'html':'text/html','js':'text/javascript','css':'text/css','jpg':'image/jpeg'}[name.split('.')[-1]])
             self.send_header('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(payload)
+        except PermissionError as e: self.reply(403, {'error':str(e)})
         except (ValueError, OSError) as e: self.reply(400, {'error':str(e)})
     def do_POST(self):
         try:
@@ -173,6 +187,13 @@ class Handler(BaseHTTPRequestHandler):
             u=self.user()
             if not u: return self.reply(401,{'error':'Sign in required'})
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),u['csrf']): return self.reply(403,{'error':'Invalid CSRF token'})
+            if self.path=='/api/domain-marketplaces':
+                return self.reply(202,domain_marketplace.handle('POST',u,body,db))
+            if self.path=='/api/provider-keys':
+                status,value=api_keys.handle('POST',u,body)
+                if status==200:
+                    with db() as con: con.execute('INSERT INTO audit(actor,action,created) VALUES(?,?,?)',(u['username'],'provider-key:'+value['event']+':'+str(value['id']),int(time.time())))
+                return self.reply(status,value)
             if self.path=='/api/mail-accounts':
                 status,value=mail_accounts.handle('POST',u,db,body)
                 return self.reply(status,value)

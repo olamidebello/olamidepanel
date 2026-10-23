@@ -19,6 +19,7 @@ async function fixture(){
 }
 test('late module response cannot overwrite or append to newer screen',async()=>{
  const {dom,w,pending}=await fixture();try{
+  w.testing.setUser({id:1,role:'user',permissions:['domains.write']});
   const first=w.testing.open('Domains');
   assert.equal(pending[0].path,'/api/domains');
   await w.testing.open('Track DNS');
@@ -39,8 +40,8 @@ test('category render invalidates pending module and keeps detail hidden',async(
 });
 test('late planned-module response stays detached after another tool opens',async()=>{
  const {dom,w,pending}=await fixture();try{
-  const first=w.testing.open('Email Accounts');await w.testing.open('Track DNS');
-  pending[0].resolve({tools:[{name:'Email Accounts',detail:'old unavailable module'}]});await first;
+  const first=w.testing.open('FTP Accounts');await w.testing.open('Track DNS');
+  pending[0].resolve({tools:[{name:'FTP Accounts',detail:'old unavailable module'}]});await first;
   const detail=w.document.getElementById('detail');
   assert.equal(detail.querySelector('h2').textContent,'Track DNS');
   assert.equal(detail.textContent.includes('old unavailable module'),false);

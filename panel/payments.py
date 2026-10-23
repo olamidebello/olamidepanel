@@ -6,6 +6,7 @@ from urllib.parse import urlencode,quote,urlsplit
 from urllib.error import HTTPError,URLError
 from cryptography.fernet import Fernet
 from database import connect
+import domain_marketplace
 from fulfillment import enqueue
 
 ADAPTERS={'stripe','paystack'}
@@ -98,7 +99,9 @@ def handle(method,path,user,body=None):
                 if not order:return 404,{'error':'Unknown order'}
                 if order['status']!='approved':return 400,{'error':'Order must be approved first'}
                 if order['seller_id'] and not seller_allowed(con,order['seller_id']):return 403,{'error':'Seller storefront disabled'}
-                return 200,con.execute('SELECT id,provider,label,mode FROM payment_gateways WHERE owner_id=? AND enabled=1',(order['seller_id'],)).fetchall()
+                assigned=domain_marketplace.order_gateways(con,uid)
+                choices=con.execute('SELECT id,provider,label,mode FROM payment_gateways WHERE owner_id=? AND enabled=1',(order['seller_id'],)).fetchall()
+                return 200,[g for g in choices if assigned is None or g['id'] in assigned]
         return 404,{'error':'Unknown payment operation'}
     if user['role']=='readonly':return 403,{'error':'Read-only access'}
     if suffix=='gateways/save':
@@ -139,6 +142,8 @@ def handle(method,path,user,body=None):
             if not order or order['status']!='approved':raise ValueError('Only your approved orders can be paid')
             if order['seller_id'] and not seller_allowed(con,order['seller_id']):raise ValueError('Seller storefront disabled')
             if order['price_cents']<=0:raise ValueError('Free orders require manual setup, not checkout')
+            assigned=domain_marketplace.order_gateways(con,order['id'])
+            if assigned is not None and int(body['gateway_id']) not in assigned:raise ValueError('Gateway is not assigned to this domain')
             existing=con.execute('SELECT * FROM payment_transactions WHERE order_id=?',(order['id'],)).fetchone()
             if existing:
                 if existing['state']=='checkout' and existing['checkout_url']:return 200,{'url':existing['checkout_url'],'state':'checkout'}

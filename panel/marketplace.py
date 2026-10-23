@@ -1,5 +1,6 @@
 """Plan catalog, paid orders and automatic panel resource activation."""
 import json, re, time
+import domain_marketplace
 from database import connect, IntegrityError
 
 ADMIN_ROLES={'root','super_admin'}
@@ -150,6 +151,10 @@ def handle(method,path,user,body=None):
             if plan['seller_id']:
                 vendor=con.execute("SELECT v.user_id FROM marketplace_vendors v JOIN users u ON u.id=v.user_id WHERE v.user_id=? AND v.enabled=1 AND u.active=1 AND u.role='reseller'",(plan['seller_id'],)).fetchone()
                 if not vendor:raise ValueError('This reseller storefront is unavailable')
+            domain=body.get('marketplace_domain','')
+            if domain:
+                domain_marketplace.assigned(con,domain)
+                if plan['seller_id']!=0:raise ValueError('Domain storefront uses the operator catalog')
             if plan['seller_id']==user['id']:raise ValueError('You cannot order your own plan')
             if type(body.get('expected_price_cents')) is not int or body['expected_price_cents']!=plan['price_cents']:raise ValueError('Plan price changed. Reload the catalog and confirm the current price.')
             snapshot=json.dumps({k:plan[k] for k in ['name','description','price_cents','disk_gb','bandwidth_gb','websites','seller_id','plan_kind']})
@@ -159,6 +164,7 @@ def handle(method,path,user,body=None):
                 existing=con.execute('SELECT id FROM hosting_orders WHERE owner=? AND request_key=? FOR UPDATE',(user['id'],key)).fetchone()
                 if not existing:raise
                 return 200,{'ok':True,'id':existing['id'],'duplicate':True}
+            if domain:con.execute('INSERT INTO domain_marketplace_orders(order_id,domain) VALUES(?,?)',(uid,domain))
             audit(con,user,'order requested '+str(uid))
         return 200,{'ok':True,'id':uid,'status':'approved' if plan['price_cents']>0 else 'pending','message':'Order recorded. Complete payment to activate account resources automatically.'}
     if suffix=='orders/retry':

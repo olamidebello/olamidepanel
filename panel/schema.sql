@@ -210,3 +210,29 @@ CREATE TABLE IF NOT EXISTS mail_requests (
 CREATE TABLE IF NOT EXISTS mail_inventory (
  address VARCHAR(320) PRIMARY KEY, updated BIGINT NOT NULL
 ) ENGINE=InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS domain_marketplaces (
+ domain VARCHAR(253) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE,
+ gateway_ids TEXT NOT NULL,
+ state VARCHAR(32) NOT NULL,
+ message VARCHAR(250) NOT NULL DEFAULT '',
+ updated BIGINT NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS domain_marketplace_jobs (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ domain VARCHAR(253) CHARACTER SET ascii NOT NULL,
+ operation VARCHAR(16) NOT NULL,
+ gateway_ids TEXT NOT NULL,
+ creator BIGINT NOT NULL,
+ state VARCHAR(24) NOT NULL DEFAULT 'queued',
+ created BIGINT NOT NULL,
+ finished BIGINT,
+ message VARCHAR(250) NOT NULL DEFAULT '',
+ INDEX domain_queue(state,id)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS domain_marketplace_orders (
+ order_id BIGINT PRIMARY KEY,
+ domain VARCHAR(253) CHARACTER SET ascii NOT NULL
+) ENGINE=InnoDB;

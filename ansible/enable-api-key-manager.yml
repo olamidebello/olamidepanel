@@ -1,0 +1,54 @@
+---
+- name: Install API provider credential management GUI
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Require existing encryption key and runtime
+      ansible.builtin.stat:
+        path: '{{ item }}'
+        follow: true
+      loop: [/etc/olamidepanel/payment.key, /opt/olamidepanel/venv/bin/python]
+      register: prerequisites
+    - name: Verify installed panel
+      ansible.builtin.assert:
+        that: item.stat.isreg | default(false)
+      loop: '{{ prerequisites.results }}'
+    - name: Install provider vault and server routes with backups
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../panel/{{ item }}'
+        dest: '/opt/olamidepanel/panel/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      loop: [api_keys.py, domain_marketplace.py, marketplace.py, payments.py, server.py, module_manager.py, schema.sql, module-audit.json, static/app.js]
+      notify: Restart panel
+    - name: Validate backend syntax
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -c, 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ["/opt/olamidepanel/panel/api_keys.py","/opt/olamidepanel/panel/server.py"]]']
+      changed_when: false
+    - name: Add marketplace deployment tables without changing existing rows
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, -c, 'import sys; sys.path.insert(0,"/opt/olamidepanel/panel"); import domain_marketplace; domain_marketplace.initialize()']
+        chdir: /tmp
+      changed_when: false
+    - name: Apply panel update
+      ansible.builtin.meta: flush_handlers
+    - name: Verify panel backend
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/
+        status_code: 200
+      register: ready
+      until: ready.status == 200
+      retries: 10
+      delay: 2
+    - name: Report management availability
+      ansible.builtin.debug:
+        msg: 'Administration > API Providers & Keys is available to root/super_admin. Keys are encrypted and never exported through the API. Domain assignments are stored policy; application distribution requires an adapter.'
+  handlers:
+    - name: Restart panel
+      ansible.builtin.systemd:
+        name: olamidepanel
+        state: restarted

@@ -7,7 +7,7 @@ from database import connect
 
 # Only these existing source adapters can be repaired by the privileged runner.
 ADAPTERS={
- 'core':(['server.py','database.py','module_manager.py','modules.py','module-audit.json','schema.sql','static/app.js'],['pymysql']),
+ 'core':(['api_keys.py','domain_marketplace.py','server.py','database.py','module_manager.py','modules.py','module-audit.json','schema.sql','static/app.js'],['pymysql']),
  'files':(['storage.py'],['PIL']),
  'websites':(['websites.py','site_controls.py'],['dns.resolver']),
  'marketplace':(['marketplace.py','fulfillment.py'],[]),

@@ -1430,5 +1430,29 @@
     "source": "panel/module_manager.py; deploy/module_runner.py",
     "api": "/api/module-manager",
     "detail": "Super-admin sequential prerequisite/source checks and repair of fixed existing adapters. Displays all tool coverage; cannot generate absent modules or vendor credentials."
+  },
+  {
+    "category": "Administration",
+    "name": "API Providers & Keys",
+    "status": "partial",
+    "source": "panel/api_keys.py",
+    "api": "/api/provider-keys",
+    "detail": "Encrypted credential vault with replacement, enabled/expiry policy and domain assignments. Distribution to hosted applications is not connected."
+  },
+  {
+    "category": "Administration",
+    "name": "Domain Marketplace Deployment",
+    "status": "partial",
+    "source": "panel/domain_marketplace.py; deploy/domain_marketplace_worker.py",
+    "api": "/api/domain-marketplaces",
+    "detail": "Bulk existing-vhost marketplace routes, shared operator gateway references, centralized checkout and per-domain outcomes. Native app marketplace integration is separate."
+  },
+  {
+    "category": "Administration",
+    "name": "Namecheap Accounts",
+    "status": "partial",
+    "source": "panel/namecheap.py",
+    "api": "/api/namecheap",
+    "detail": "Encrypted registrar accounts, domain queries and explicit DNS provisioning; requires provider credentials and allowlisted server IP."
   }
 ]

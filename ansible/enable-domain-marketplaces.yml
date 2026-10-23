@@ -1,0 +1,69 @@
+---
+- import_playbook: enable-api-key-manager.yml
+
+- name: Install broker for bulk domain marketplaces and shared gateways
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Validate existing Nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Install HTTPS health check prerequisite
+      ansible.builtin.apt:
+        name: curl
+        state: present
+    - name: Create protected broker directories
+      ansible.builtin.file:
+        path: '{{ item.path }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '{{ item.mode }}'
+      loop:
+        - {path: /var/lib/olamide-domain-marketplaces, mode: '0700'}
+        - {path: /var/lib/olamide-domain-marketplaces/backups, mode: '0700'}
+        - {path: /etc/nginx/olamide-marketplaces, mode: '0755'}
+    - name: Install fixed privileged broker with backup
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/domain_marketplace_worker.py'
+        dest: /usr/local/sbin/olamide-domain-marketplaces
+        owner: root
+        group: root
+        mode: '0700'
+        backup: true
+    - name: Install sequential broker service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamide-domain-marketplaces.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Apply approved domain marketplace routes
+          After=nginx.service olamidepanel.service
+          [Service]
+          Type=oneshot
+          User=root
+          UMask=0077
+          ExecStart=/opt/olamidepanel/venv/bin/python /usr/local/sbin/olamide-domain-marketplaces
+          TimeoutStartSec=2h
+    - name: Install deployment queue timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/olamide-domain-marketplaces.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Process domain marketplace requests
+          [Timer]
+          OnBootSec=1min
+          OnUnitInactiveSec=30s
+          [Install]
+          WantedBy=timers.target
+    - name: Enable deployment queue processing
+      ansible.builtin.systemd:
+        name: olamide-domain-marketplaces.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+    - name: Explain bulk deployment flow
+      ansible.builtin.debug:
+        msg: 'Open Administration > Domain Marketplace Deployment. Select domains and enabled operator payment gateways, then review and queue. Broker checks each existing vhost and local HTTPS. Gateways remain centrally encrypted; existing payment live/test safeguards are retained. This publishes the shared operator catalog, not native marketplace integrations inside unrelated applications.'
