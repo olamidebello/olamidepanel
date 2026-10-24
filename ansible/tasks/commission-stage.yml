@@ -5,6 +5,7 @@
       /usr/bin/ansible-playbook -i /var/lib/olamidepanel-commission/inventory.ini
       {{ ('/var/lib/olamidepanel-commission/source/ansible/' + commission_stage.playbook) | quote }}
       -e {{ ('@' + (commission_stage_config | default(commission_config | default('/root/hosting-commission.yml')))) | quote }}
+      {{ ('-e @' + commission_runtime_config) if commission_runtime_config is defined and commission_stage.name == 'runtime_prerequisites' else '' }}
       > {{ ('/var/lib/olamidepanel-commission/' + commission_stage.name + '.log') | quote }} 2>&1
     executable: /bin/bash
   environment:

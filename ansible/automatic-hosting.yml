@@ -1,0 +1,38 @@
+---
+- name: Prepare automatic hosting commissioning
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require Debian 12 amd64
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - ansible_architecture == 'x86_64'
+    - name: Create initial protected settings without overwriting saved values
+      ansible.builtin.copy:
+        dest: '{{ commission_config | default("/root/hosting-commission.yml") }}'
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+        content: |
+          panel_hostname: {{ automatic_panel_hostname | default('olamidepanel.com') | to_json }}
+          panel_acme_email: {{ automatic_acme_email | default('dobcalldemo@gmail.com') | to_json }}
+          panel_public_ipv4: {{ automatic_public_ipv4 | default('154.16.170.86') | to_json }}
+          panel_admin_username: {{ automatic_admin_username | default('owner') | to_json }}
+          panel_revision: main
+    - name: Write prerequisite selection independently of saved credentials
+      ansible.builtin.copy:
+        dest: /root/hosting-runtime-profiles.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {'hosting_prerequisite_profiles': automatic_prerequisite_profiles | default(['web_runtime', 'file_tools', 'statistics', 'malware_scanner', 'postgresql'])} | to_nice_json }}
+    - name: Set common stage configuration
+      ansible.builtin.set_fact:
+        commission_runtime_config: /root/hosting-runtime-profiles.json
+- import_playbook: commission-hosting.yml

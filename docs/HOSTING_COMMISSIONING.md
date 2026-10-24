@@ -70,3 +70,24 @@ infer that a feature works because a package exists. Commercial product entries
 require licensing, OS compatibility and a supported adapter; they are not
 installed or purchased. cPanel public website links and sales buttons are not
 server packages. This workflow does not reproduce those websites.
+
+## Single-command automatic entry point
+
+On the configured Debian 12 server, run:
+
+```sh
+ansible-pull -U https://github.com/olamidebello/olamidepanel.git \
+  -C main -d /opt/olamidepanel-commission-bootstrap \
+  -i localhost, -c local ansible/automatic-hosting.yml
+```
+
+Install `ansible-core git ca-certificates` with apt first if ansible-pull is absent.
+The entry point creates missing `/root/hosting-commission.yml` using this
+operator's domain, email and IP defaults, preserves an existing configuration,
+and selects all five prerequisite profiles through a separate root-only file.
+Existing `/root/all-domain-email.yml` is used when present. It does not fabricate
+mail/DNS/payment credentials or implement missing tools. It runs once per command;
+component service timers continue their established background work. Rerun the
+command to apply later reviewed updates. Reports and private logs remain under
+`/var/lib/olamidepanel-commission`. Use a reviewed commit instead of main for a
+fixed source revision.
