@@ -42,3 +42,31 @@ Reruns reconcile components and replace commissioning logs/report. This is a
 one-shot operator workflow; it does not schedule future source pulls. Individual
 components install their documented service timers. Back up production data and
 private encryption keys through your established backup workflow.
+
+## Runtime profiles and detailed coverage
+
+`install-hosting-prerequisites.yml` adds fixed Debian package profiles. Set
+`hosting_prerequisite_profiles` in the private commissioning config to any of:
+`web_runtime`, `file_tools`, `statistics`, `malware_scanner`, `postgresql`.
+The commissioning example selects all five. Existing configs without this setting
+select web runtime and file tools only. PHP extensions, Node/npm, Ruby/Perl,
+rsync/archives, GoAccess/AWStats, ClamAV and PostgreSQL are prerequisites, not
+finished hosting features. Apt service starts are suppressed during installation;
+no PHP pools, database tenant accounts, scanners or analytics jobs are activated.
+Existing running services are not stopped. Distribution package versions apply.
+
+Run the prerequisite play directly on an existing machine with:
+
+```sh
+ansible-playbook -i localhost, -c local ansible/install-hosting-prerequisites.yml \
+  -e @/root/hosting-commission.yml
+```
+
+Full commissioning also writes `/var/lib/olamidepanel-commission/features.json`,
+containing the panel's per-tool implementation inventory, package presence and
+commercial integration requirements. Its coverage is the existing panel catalog,
+not every nested cPanel/WHM action. It does not test external integrations or
+infer that a feature works because a package exists. Commercial product entries
+require licensing, OS compatibility and a supported adapter; they are not
+installed or purchased. cPanel public website links and sales buttons are not
+server packages. This workflow does not reproduce those websites.

@@ -6,3 +6,6 @@ panel_admin_username: owner
 panel_revision: main
 # Fresh installs generate protected credentials. Existing installations are reused.
 # Optional mail provisioning reads /root/all-domain-email.yml separately.
+
+# Packages alone do not implement the matching customer GUI/service isolation.
+hosting_prerequisite_profiles: [web_runtime, file_tools, statistics, malware_scanner, postgresql]

@@ -1,0 +1,42 @@
+---
+- name: Install selected hosting runtime prerequisites without publishing services
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require supported platform
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - not ansible_check_mode
+    - name: Validate selected prerequisite profiles
+      ansible.builtin.assert:
+        that: hosting_prerequisite_profiles | default(['web_runtime', 'file_tools']) | difference(['web_runtime', 'file_tools', 'statistics', 'malware_scanner', 'postgresql']) | length == 0
+    - name: Resolve fixed package allowlist
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import importlib.util,json,sys
+            spec=importlib.util.spec_from_file_location('features',sys.argv[1])
+            m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+            print(json.dumps(sorted({p for name in json.loads(sys.argv[2]) for p in m.PROFILES[name]})))
+          - '{{ playbook_dir }}/../deploy/hosting_feature_report.py'
+          - "{{ hosting_prerequisite_profiles | default(['web_runtime', 'file_tools']) | to_json }}"
+      delegate_to: localhost
+      become: false
+      register: hosting_packages
+      changed_when: false
+    - name: Install runtime packages without starting unconfigured daemons
+      ansible.builtin.apt:
+        name: '{{ hosting_packages.stdout | from_json }}'
+        state: present
+        update_cache: true
+        install_recommends: false
+        policy_rc_d: 101
+      when: hosting_packages.stdout | from_json | length > 0
+    - name: Report runtime commissioning requirements
+      ansible.builtin.debug:
+        msg: Packages installed. PHP pools, PostgreSQL tenant permissions, log analytics and scanner updates require configuration. No new public listeners or customer GUI adapters were commissioned by this prerequisite stage.

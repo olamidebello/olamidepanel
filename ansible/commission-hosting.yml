@@ -68,6 +68,7 @@
     - name: Install existing feature adapters sequentially
       ansible.builtin.include_tasks: tasks/commission-stage.yml
       loop:
+        - {name: runtime_prerequisites, playbook: install-hosting-prerequisites.yml}
         - {name: module_manager, playbook: enable-module-manager.yml}
         - {name: hosting_gui, playbook: enable-hosting-domain-gui.yml}
         - {name: marketplaces_and_ai, playbook: enable-domain-marketplaces.yml}
@@ -93,6 +94,16 @@
         argv: [python3, /var/lib/olamidepanel-commission/source/panel/modules.py]
       register: commission_inventory
       changed_when: false
+    - name: Read feature and package evidence
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamidepanel-commission/source/deploy/hosting_feature_report.py]
+      register: commission_features
+      changed_when: false
+    - name: Save detailed feature coverage
+      ansible.builtin.copy:
+        dest: /var/lib/olamidepanel-commission/features.json
+        mode: '0600'
+        content: '{{ commission_features.stdout }}'
     - name: Check gateway configuration
       ansible.builtin.command: nginx -t
       register: commission_nginx
