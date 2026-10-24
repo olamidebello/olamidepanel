@@ -1,0 +1,8 @@
+# Save as /root/hosting-commission.yml, owned by root and mode 0600.
+panel_hostname: olamidepanel.com
+panel_acme_email: dobcalldemo@gmail.com
+panel_public_ipv4: 154.16.170.86
+panel_admin_username: owner
+panel_revision: main
+# Fresh installs generate protected credentials. Existing installations are reused.
+# Optional mail provisioning reads /root/all-domain-email.yml separately.

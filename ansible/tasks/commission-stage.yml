@@ -1,0 +1,19 @@
+---
+- name: 'Run {{ commission_stage.name }} with private output'
+  ansible.builtin.shell:
+    cmd: >-
+      /usr/bin/ansible-playbook -i /var/lib/olamidepanel-commission/inventory.ini
+      {{ ('/var/lib/olamidepanel-commission/source/ansible/' + commission_stage.playbook) | quote }}
+      -e {{ ('@' + (commission_stage_config | default(commission_config | default('/root/hosting-commission.yml')))) | quote }}
+      > {{ ('/var/lib/olamidepanel-commission/' + commission_stage.name + '.log') | quote }} 2>&1
+    executable: /bin/bash
+  environment:
+    ANSIBLE_NOCOLOR: '1'
+  register: commission_run
+  async: 7200
+  poll: 15
+  failed_when: false
+  no_log: true
+- name: Record stage outcome
+  ansible.builtin.set_fact:
+    commission_results: "{{ commission_results + [{'name': commission_stage.name, 'state': 'passed' if commission_run.rc | default(1) == 0 else 'failed', 'log': '/var/lib/olamidepanel-commission/' + commission_stage.name + '.log'}] }}"

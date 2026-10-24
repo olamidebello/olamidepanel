@@ -1,0 +1,126 @@
+---
+- name: Install and commission implemented hosting services
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Require Debian 12 amd64 and a live run
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - ansible_architecture == 'x86_64'
+    - name: Install commissioning prerequisites
+      ansible.builtin.apt:
+        name: [ansible-core, python3, python3-venv, git, curl, ca-certificates, openssl, acl, dnsutils]
+        state: present
+        update_cache: true
+    - name: Create private commissioning workspace
+      ansible.builtin.file:
+        path: /var/lib/olamidepanel-commission
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Require protected operator configuration on target
+      ansible.builtin.stat:
+        path: '{{ commission_config | default("/root/hosting-commission.yml") }}'
+      register: commission_settings
+    - name: Validate private configuration
+      ansible.builtin.assert:
+        that:
+          - commission_settings.stat.isreg | default(false)
+          - commission_settings.stat.uid | default(-1) == 0
+          - commission_settings.stat.mode | default('') in ['0600', '0400']
+        fail_msg: Copy commission-hosting.example.yml to /root/hosting-commission.yml, edit it and chmod 600.
+    - name: Stage reviewed source files on target
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../{{ item }}/'
+        dest: '/var/lib/olamidepanel-commission/source/{{ item }}/'
+        mode: preserve
+      loop: [ansible, deploy, panel]
+    - name: Stage Python requirements
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../requirements.txt'
+        dest: /var/lib/olamidepanel-commission/source/requirements.txt
+        mode: '0600'
+    - name: Install explicit local host group
+      ansible.builtin.copy:
+        dest: /var/lib/olamidepanel-commission/inventory.ini
+        mode: '0600'
+        content: |
+          [panel_servers]
+          localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+    - name: Detect installed panel
+      ansible.builtin.stat:
+        path: /etc/olamidepanel/database.json
+      register: commission_existing
+    - name: Initialize commissioning results
+      ansible.builtin.set_fact:
+        commission_results: []
+    - name: Bootstrap panel on fresh machines only
+      ansible.builtin.include_tasks: tasks/commission-stage.yml
+      vars:
+        commission_stage: {name: bootstrap, playbook: deploy-bare-debian12.yml}
+      when: not commission_existing.stat.exists
+    - name: Install existing feature adapters sequentially
+      ansible.builtin.include_tasks: tasks/commission-stage.yml
+      loop:
+        - {name: module_manager, playbook: enable-module-manager.yml}
+        - {name: hosting_gui, playbook: enable-hosting-domain-gui.yml}
+        - {name: marketplaces_and_ai, playbook: enable-domain-marketplaces.yml}
+        - {name: watchdog, playbook: enable-domain-watchdog.yml}
+      loop_control:
+        loop_var: commission_stage
+    - name: Inspect optional saved email configuration
+      ansible.builtin.stat:
+        path: '{{ commission_mail_config | default("/root/all-domain-email.yml") }}'
+      register: commission_mail_file
+    - name: Commission domain mail when configured
+      ansible.builtin.include_tasks: tasks/commission-stage.yml
+      vars:
+        commission_stage: {name: domain_mail, playbook: provision-all-domain-email.yml}
+        commission_stage_config: '{{ commission_mail_config | default("/root/all-domain-email.yml") }}'
+      when: commission_mail_file.stat.exists
+    - name: Record missing mail configuration
+      ansible.builtin.set_fact:
+        commission_results: "{{ commission_results + [{'name': 'domain_mail', 'state': 'configuration_required'}] }}"
+      when: not commission_mail_file.stat.exists
+    - name: Read implementation inventory from reviewed source
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamidepanel-commission/source/panel/modules.py]
+      register: commission_inventory
+      changed_when: false
+    - name: Check gateway configuration
+      ansible.builtin.command: nginx -t
+      register: commission_nginx
+      changed_when: false
+      failed_when: false
+    - name: Check panel HTTP readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/
+        status_code: 200
+      register: commission_http
+      failed_when: false
+    - name: Save commissioning report without credentials
+      ansible.builtin.copy:
+        dest: /var/lib/olamidepanel-commission/report.json
+        mode: '0600'
+        content: >-
+          {{ {'stages': commission_results, 'nginx_ok': commission_nginx.rc == 0,
+          'panel_http_ok': commission_http.status | default(0) == 200,
+          'implementation': commission_inventory.stdout | from_json,
+          'exact_cpanel_parity': false,
+          'notice': 'Installation is not feature parity. Provider credentials, DNS, external delivery, payments and tenant isolation require separate validation.'} | to_nice_json }}
+    - name: Report commissioning outcome
+      ansible.builtin.debug:
+        msg: 'Report: /var/lib/olamidepanel-commission/report.json. Stage logs are root-only in the same directory. Exact cPanel parity is not implemented.'
+    - name: Require installed stages and local health checks to pass
+      ansible.builtin.assert:
+        that:
+          - commission_results | selectattr('state', 'equalto', 'failed') | list | length == 0
+          - commission_nginx.rc == 0
+          - commission_http.status | default(0) == 200
+        fail_msg: Commissioning is incomplete. Inspect report.json and the named stage logs; successful stages are retained.
