@@ -1,0 +1,84 @@
+---
+- name: Install backend SDK and per-application registration workers
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Require explicit approved application service accounts
+      ansible.builtin.assert:
+        that: communication_apps | default([]) | length > 0
+        fail_msg: Supply communication_apps with id, user, group and a target-side private config path. SIP tokens must be provisioned on the SIP server first.
+    - name: Validate application identifiers
+      ansible.builtin.assert:
+        that:
+          - item.id is match('^[a-z][a-z0-9-]{1,39}$')
+          - item.user is match('^[a-z_][a-z0-9_-]{0,31}$')
+          - item.group is match('^[a-z_][a-z0-9_-]{0,31}$')
+          - item.config is match('^/etc/[a-zA-Z0-9_./-]+$')
+      loop: '{{ communication_apps }}'
+      loop_control: {label: '{{ item.id }}'}
+    - name: Create shared read-only SDK directory
+      ansible.builtin.file:
+        path: /opt/olamide-shared-services
+        state: directory
+        mode: '0755'
+    - name: Install SDK and phone widget
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../integrations/{{ item }}'
+        dest: '/opt/olamide-shared-services/{{ item }}'
+        mode: '0644'
+      loop: [hosted_services.py, phone-services.js]
+    - name: Require private application configuration
+      ansible.builtin.stat:
+        path: '{{ item.config }}'
+      register: communication_configs
+      loop: '{{ communication_apps }}'
+      loop_control: {label: '{{ item.id }}'}
+    - name: Protect application credentials from other tenants
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+          - item.stat.mode | default('') in ['0600', '0640']
+          - item.stat.pw_name | default('') in ['root', item.item.user]
+          - item.stat.gr_name | default('') == item.item.group
+      loop: '{{ communication_configs.results }}'
+      loop_control: {label: '{{ item.item.id }}'}
+    - name: Install per-application worker service
+      ansible.builtin.copy:
+        dest: '/etc/systemd/system/hosted-communications-{{ item.id }}.service'
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Hosted registration communications for {{ item.id }}
+          After=network-online.target
+          [Service]
+          Type=oneshot
+          User={{ item.user }}
+          Group={{ item.group }}
+          UMask=0077
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ExecStart=/usr/bin/python3 /opt/olamide-shared-services/hosted_services.py --config {{ item.config }}
+          TimeoutStartSec=10min
+      loop: '{{ communication_apps }}'
+    - name: Install retry timers
+      ansible.builtin.copy:
+        dest: '/etc/systemd/system/hosted-communications-{{ item.id }}.timer'
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Retry hosted communications for {{ item.id }}
+          [Timer]
+          OnBootSec=1min
+          OnUnitInactiveSec=30s
+          RandomizedDelaySec=5s
+          [Install]
+          WantedBy=timers.target
+      loop: '{{ communication_apps }}'
+    - name: Enable durable retry workers
+      ansible.builtin.systemd:
+        name: 'hosted-communications-{{ item.id }}.timer'
+        daemon_reload: true
+        state: started
+        enabled: true
+      loop: '{{ communication_apps }}'
