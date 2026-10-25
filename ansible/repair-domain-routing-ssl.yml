@@ -1,0 +1,72 @@
+---
+- name: Repair verified domain gateways and commission HTTPS sequentially
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require Debian 12 and live execution
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+          - not ansible_check_mode
+    - name: Install gateway and certificate prerequisites
+      ansible.builtin.apt:
+        name: [nginx, certbot, python3-certbot-nginx, curl, dnsutils, python3]
+        state: present
+        update_cache: true
+    - name: Validate Nginx before making changes
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Read hosted domains from the active panel
+      become_user: olamidepanel
+      ansible.builtin.command:
+        argv: [/opt/olamidepanel/venv/bin/python, /opt/olamidepanel/repo/deploy/export_domain_accounts.py]
+      environment:
+        PANEL_DB_CONFIG: /etc/olamidepanel/database.json
+      register: routing_inventory
+      changed_when: false
+    - name: Create private repair workspace
+      ansible.builtin.file:
+        path: /var/lib/olamide-domain-ssl-repair
+        state: directory
+        mode: '0700'
+    - name: Install fixed repair worker
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/repair_domain_ssl.py'
+        dest: /var/lib/olamide-domain-ssl-repair/worker.py
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Discover exact domains already configured in Nginx
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamide-domain-ssl-repair/worker.py, --discover]
+      register: routing_nginx_domains
+      changed_when: false
+    - name: Save approved routing and certificate policy
+      ansible.builtin.copy:
+        dest: /var/lib/olamide-domain-ssl-repair/config.json
+        mode: '0600'
+        content: >-
+          {{ {'ipv4': repair_ipv4 | default('154.16.170.86'), 'email': repair_email | default('dobcalldemo@gmail.com'),
+          'domains': repair_domains | default(((routing_inventory.stdout | from_json | selectattr('active') | map(attribute='domain') | list) + (routing_nginx_domains.stdout | from_json)) | unique | list),
+          'targets': repair_targets | default({})} | to_nice_json }}
+    - name: Repair domains and retain per-domain outcomes
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamide-domain-ssl-repair/worker.py, --config, /var/lib/olamide-domain-ssl-repair/config.json]
+      register: routing_repair
+      async: 14400
+      poll: 15
+      failed_when: false
+    - name: Enable certificate renewal scheduling
+      ansible.builtin.systemd:
+        name: certbot.timer
+        enabled: true
+        state: started
+    - name: Report result location
+      ansible.builtin.debug:
+        msg: Read /var/lib/olamide-domain-ssl-repair/report.json. Routing changes require repair_targets with verified backend port and identity marker. DNS conflicts and duplicate vhosts require review; no application code or data was rebuilt.
+    - name: Require every selected domain to pass
+      ansible.builtin.assert:
+        that: routing_repair.rc | default(1) == 0
+        fail_msg: Some domains remain incomplete. Successful repairs/certificates are retained; inspect report.json and private Certbot logs.

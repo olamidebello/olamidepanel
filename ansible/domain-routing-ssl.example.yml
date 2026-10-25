@@ -1,0 +1,11 @@
+repair_ipv4: 154.16.170.86
+repair_email: dobcalldemo@gmail.com
+# Omit repair_domains to check all active panel domains.
+# repair_domains: [justisolve.com]
+# Supply confirmed backend identities for actual routing repair; never guess ports.
+# repair_targets:
+#   justisolve.com:
+#     port: 18082
+#     health: /api/health
+#     contains: '"service":"api"'
+repair_targets: {}
