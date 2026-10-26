@@ -47,14 +47,31 @@ def strip_domain(text):
 def panel_body(body):
  return '<title>OlamidePanel' in body and 'id="loginForm"' in body
 
+def wait_for_panel(args, attempts=15, diagnostic=None):
+ # Reload signals Nginx asynchronously; old workers can briefly answer requests.
+ for attempt in range(attempts):
+  try:
+   body=command(args)
+   if diagnostic is not None:diagnostic.write_text(body)
+   if panel_body(body):return
+  except subprocess.SubprocessError:pass
+  if attempt+1<attempts:time.sleep(1)
+ raise ValueError('Domain still returned a different application after reload settled; inspect diagnostics')
+
+def loaded(dump,path):
+ return any(Path(name).resolve()==path.resolve() for name in re.findall(r'^# configuration file (.+):\s*$',dump,re.M))
+
+def effective_dump():
+ return command(['nginx','-T'])
+
 def files():
- parts=re.split(r'^# configuration file (.+):\s*$',command(['nginx','-T']),flags=re.M);out={}
+ parts=re.split(r'^# configuration file (.+):\s*$',effective_dump(),flags=re.M);out={}
  for i in range(1,len(parts),2):
   p=Path(parts[i].strip()).resolve()
   if p.is_relative_to('/etc/nginx') and p.is_file():out[p]=p.read_text()
  return out
 
-def site(tls=False):
+def site(tls=False, addresses=()):
  text='''# Managed by restore_panel_domain.py
 server {
  listen 80;
@@ -86,6 +103,11 @@ server {
  }
 }
 '''
+ # Join any explicitly bound IPv4 listeners as well as the wildcard listener.
+ # Otherwise Nginx may select a different server table on that address.
+ for address in sorted(set(addresses)):
+  text=text.replace(' listen 80;',' listen 80;\n listen '+address+':80;',1)
+  if tls:text=text.replace(' listen 443 ssl;',' listen 443 ssl;\n listen '+address+':443 ssl;',1)
  return text
 
 def valid_existing_cert():
@@ -102,11 +124,18 @@ def main():
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
   stamp=BASE/str(time.time_ns());stamp.mkdir(mode=0o700)
   report={'domain':DOMAIN,'backup':str(stamp),'status':'failed'}
-  originals={};changed={};started=False;old_conf=None;conf_existed=False
+  originals={};changed={};started=False;old_conf=None;conf_existed=False;enabled_link=None
   try:
    body=command(['curl','--noproxy','*','-fsS','--max-time','10','http://127.0.0.1:8090/'])
    if not panel_body(body):raise ValueError('Port 8090 is not the OlamidePanel login. No gateway files changed.')
    original=files()
+   baseline=effective_dump()
+   (stamp/'nginx-before.txt').write_text(baseline)
+   for name,args in [('listeners.txt',['ss','-ltnp']),('nginx-service.txt',['systemctl','show','nginx','-p','MainPID','-p','ExecStart','-p','ExecReload'])]:
+    try:(stamp/name).write_text(command(args))
+    except subprocess.SubprocessError:pass
+   addresses=set(re.findall(r'\blisten\s+([0-9]+(?:\.[0-9]+){3}):(?:80|443)\b',baseline))
+   addresses.discard('0.0.0.0')
    if CONF.is_symlink():raise ValueError('Refuse symlink at managed configuration path')
    conf_existed=CONF.exists();old_conf=CONF.read_text() if conf_existed else None
    if conf_existed and (not old_conf.startswith('# Managed by restore_panel_domain.py') or CONF.stat().st_uid!=0 or CONF.stat().st_mode&0o022):raise ValueError('Managed filename contains an unrelated or unsafe configuration')
@@ -122,10 +151,19 @@ def main():
    (stamp/'manifest.json').write_text(json.dumps([str(p) for p in originals],indent=2))
    started=True
    for path,text in changed.items():path.write_text(text)
-   CONF.write_text(site(valid_existing_cert()));CONF.chmod(0o644)
+   CONF.write_text(site(valid_existing_cert(),addresses));CONF.chmod(0o644)
+   dump=effective_dump()
+   if not loaded(dump,CONF):
+    # Some server installers remove conf.d from nginx.conf; use the active
+    # Debian sites-enabled include when it is explicitly present instead.
+    if not re.search(r'\binclude\s+/etc/nginx/sites-enabled/\*\s*;',baseline):raise ValueError('Neither managed conf.d file nor standard sites-enabled include is loaded')
+    link=Path('/etc/nginx/sites-enabled/00-olamidepanel-restored.conf')
+    if link.exists() or link.is_symlink():raise ValueError('Fallback enabled filename already exists; inspect diagnostics')
+    link.symlink_to(CONF);enabled_link=link;dump=effective_dump()
+   (stamp/'nginx-after.txt').write_text(dump)
+   if not loaded(dump,CONF):raise ValueError('Restored vhost was not loaded by Nginx')
    command(['nginx','-t']);command(['systemctl','reload','nginx'])
-   body=command(['curl','--noproxy','*','-fsS','--max-time','10','--resolve',DOMAIN+':80:127.0.0.1','http://'+DOMAIN+'/'])
-   if not panel_body(body):raise ValueError('Local domain routing is still incorrect; check included/wildcard vhosts')
+   wait_for_panel(['curl','--noproxy','*','-fsS','--max-time','5','-D',str(stamp/'http-headers.txt'),'--resolve',DOMAIN+':80:127.0.0.1','http://'+DOMAIN+'/'],diagnostic=stamp/'http-response.html')
    report.update(status='routing_restored_ssl_pending',removed_apex_claims=removed)
    def answers(kind):
     output=command(['dig','+time=5','+tries=1','+noall','+answer',DOMAIN,kind])
@@ -138,12 +176,12 @@ def main():
     (stamp/'certbot.log').write_text(result.stdout+result.stderr)
     if result.returncode:raise ValueError('Routing restored; certificate installation failed. Inspect private certbot.log.')
     command(['nginx','-t'])
-    body=command(['curl','--noproxy','*','--resolve',DOMAIN+':443:127.0.0.1','-fsS','--max-time','20','https://'+DOMAIN+'/'])
-    if not panel_body(body):raise ValueError('HTTPS returned the wrong application')
+    wait_for_panel(['curl','--noproxy','*','--resolve',DOMAIN+':443:127.0.0.1','-fsS','--max-time','5','https://'+DOMAIN+'/'],diagnostic=stamp/'https-response.html')
     report['status']='panel_routing_and_https_verified'
   except Exception as error:
    if started and report['status']=='failed':
     for path,text in originals.items():path.write_text(text)
+    if enabled_link is not None:enabled_link.unlink(missing_ok=True)
     if conf_existed:CONF.write_text(old_conf)
     else:CONF.unlink(missing_ok=True)
     try:command(['nginx','-t']);command(['systemctl','reload','nginx']);report['rolled_back']=True

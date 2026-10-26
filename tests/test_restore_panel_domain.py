@@ -34,8 +34,28 @@ class RollbackTests(unittest.TestCase):
    def cmd(args,timeout=30):
     if args[0]=='curl':return panel if 'http://127.0.0.1:8090/' in args else '<title>Africa Media Hub</title>'
     return ''
-   with patch.object(m,'BASE',base),patch.object(m,'CONF',new),patch.object(m,'command',side_effect=cmd),patch.object(m,'files',return_value={old:text}),patch.object(m,'valid_existing_cert',return_value=False):
+   with patch.object(m,'BASE',base),patch.object(m,'CONF',new),patch.object(m,'command',side_effect=cmd),patch.object(m,'files',return_value={old:text}),patch.object(m,'valid_existing_cert',return_value=False),patch.object(m,'effective_dump',return_value='# configuration file '+str(new)+':\n'),patch.object(m.time,'sleep'):
     self.assertEqual(m.main(),1)
    self.assertEqual(old.read_text(),text);self.assertFalse(new.exists())
    import json
    result=json.loads((base/'report.json').read_text());self.assertTrue(result['rolled_back'])
+
+class ReloadTests(unittest.TestCase):
+ def test_waits_for_old_nginx_worker_to_finish(self):
+  from unittest.mock import patch
+  with patch.object(m,'command',side_effect=['<title>Media</title>','<title>OlamidePanel</title><form id="loginForm">']) as cmd,patch.object(m.time,'sleep') as sleep:
+   m.wait_for_panel(['curl'],attempts=3)
+   self.assertEqual(cmd.call_count,2);sleep.assert_called_once_with(1)
+ def test_persistent_wrong_application_still_fails(self):
+  from unittest.mock import patch
+  with patch.object(m,'command',return_value='wrong'),patch.object(m.time,'sleep'):
+   with self.assertRaises(ValueError):m.wait_for_panel(['curl'],attempts=2)
+ def test_specific_listeners_are_joined(self):
+  text=m.site(True,{'127.0.0.1','154.16.170.86'})
+  self.assertIn('listen 127.0.0.1:80;',text)
+  self.assertIn('listen 154.16.170.86:443 ssl;',text)
+ def test_included_symlink_is_recognized(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as temp:
+   target=Path(temp)/'site.conf';target.touch();alias=Path(temp)/'enabled';alias.symlink_to(target)
+   self.assertTrue(m.loaded('# configuration file '+str(alias)+':\n',target))

@@ -47,3 +47,11 @@ infrastructure may require a specific repair after inspecting their actual error
 Other automated deployers can overwrite Nginx again: fix their domain inputs,
 particularly any media installer configured with olamidepanel.com. The repair
 does not disable unrelated timers or modify their deployment policies.
+
+Reload handling now retries identity checks while old Nginx workers drain. The
+repair verifies its file is present in nginx -T and falls back to the explicitly
+active Debian sites-enabled include if conf.d is disabled. Existing explicit IPv4
+HTTP/HTTPS listener addresses are joined so a wildcard listener does not select a
+different address-specific vhost table. Root-only diagnostics include the before/
+after effective configuration, listeners, Nginx service command, HTTP headers and
+last response body. A persistent wrong response still fails and rolls back.
