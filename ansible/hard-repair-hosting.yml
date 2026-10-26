@@ -1,0 +1,5 @@
+---
+# Repairs the known wrong-site apex issue first; broad inspection follows.
+# Existing application data, accounts, keys and repositories are not reset.
+- import_playbook: restore-panel-domain.yml
+- import_playbook: repair-domain-routing-ssl.yml

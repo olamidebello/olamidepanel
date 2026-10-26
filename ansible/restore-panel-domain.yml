@@ -1,0 +1,52 @@
+---
+- name: Restore OlamidePanel domain and trusted HTTPS
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require live Debian 12 host
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+    - name: Install repair prerequisites
+      ansible.builtin.apt:
+        name: [nginx, certbot, python3-certbot-nginx, curl, dnsutils, openssl, python3]
+        state: present
+        update_cache: true
+    - name: Ensure existing panel service is running
+      ansible.builtin.systemd:
+        name: olamidepanel.service
+        state: started
+    - name: Create protected repair directory
+      ansible.builtin.file:
+        path: /var/lib/olamidepanel-domain-repair
+        state: directory
+        mode: '0700'
+    - name: Install fixed domain repair worker
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/restore_panel_domain.py'
+        dest: /var/lib/olamidepanel-domain-repair/repair.py
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Restore apex routing and SSL
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamidepanel-domain-repair/repair.py]
+      register: panel_domain_result
+      async: 600
+      poll: 10
+      failed_when: false
+    - name: Enable certificate renewal
+      ansible.builtin.systemd:
+        name: certbot.timer
+        state: started
+        enabled: true
+    - name: Report repair outcome
+      ansible.builtin.debug:
+        msg: '{{ panel_domain_result.stdout | default("Read /var/lib/olamidepanel-domain-repair/report.json") }}'
+    - name: Require confirmed panel identity and trusted HTTPS
+      ansible.builtin.assert:
+        that: panel_domain_result.rc | default(1) == 0
+        fail_msg: Read /var/lib/olamidepanel-domain-repair/report.json and its private backup/log directory. Do not rerun unrelated application installers.
