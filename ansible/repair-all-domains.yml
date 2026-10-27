@@ -1,0 +1,53 @@
+---
+- name: Repair domain mappings, TLS and approved service availability
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Require live Debian 12 host
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '12'
+    - name: Install repair prerequisites
+      ansible.builtin.apt:
+        name: [python3, nginx, certbot, python3-certbot-nginx, curl, dnsutils, openssl, util-linux]
+        state: present
+        update_cache: true
+    - name: Create private repair workspace
+      ansible.builtin.file:
+        path: /var/lib/olamide-all-domain-repair
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Install fixed repair workers
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../deploy/{{ item }}'
+        dest: '/var/lib/olamide-all-domain-repair/{{ item }}'
+        owner: root
+        group: root
+        mode: '0700'
+      loop: [repair_all_hosting.py, restore_panel_domain.py, repair_domain_ssl.py]
+    - name: Save repair run settings
+      ansible.builtin.copy:
+        dest: /var/lib/olamide-all-domain-repair/config.json
+        mode: '0600'
+        content: >-
+          {{ {'ipv4': repair_ipv4 | default('154.16.170.86'), 'email': repair_email | default('dobcalldemo@gmail.com'),
+          'domains': repair_domains | default([]), 'approved_mapping': repair_mapping_file | default('/etc/olamidepanel/domain-routing-approved.json')} | to_nice_json }}
+    - name: Repair all domains and retain incomplete outcomes
+      ansible.builtin.command:
+        argv: [python3, /var/lib/olamide-all-domain-repair/repair_all_hosting.py, --config, /var/lib/olamide-all-domain-repair/config.json]
+      register: all_repairs
+      async: 43200
+      poll: 15
+      failed_when: false
+    - name: Report combined outcome
+      ansible.builtin.debug:
+        msg: Read /var/lib/olamide-all-domain-repair/report.json. Domains without approved backend identity remain listed for mapping review. This run never resets data or guesses application ports.
+    - name: Require every repair and application identity to verify
+      ansible.builtin.assert:
+        that: all_repairs.rc | default(1) == 0
+        fail_msg: Some faults or application identities remain unresolved. Inspect the combined report and per-stage private logs; successful repairs are retained.
