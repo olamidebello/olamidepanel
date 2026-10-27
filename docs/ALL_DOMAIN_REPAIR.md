@@ -51,3 +51,28 @@ This workflow does not modify DNS-provider records, reset credentials, restore
 user data, rebuild heterogeneous applications or disable unrelated deployment
 jobs. Backups/rollback protect supported Nginx edits. Correct an offending app's
 saved deployment domain to prevent it from overwriting routing again.
+
+## Subdomain coverage
+
+The coordinator includes exact subdomains at any depth from panel and Nginx
+inventory, approved mapping keys, protected hosted-domain/recovery/feature
+snapshots, the six-domain deployment inventory and saved mail domain policy.
+It reads names only; no saved credentials are written to reports. Unsafe,
+symlinked, oversized or invalid saved inventory files are skipped and reported.
+A selected parent via `repair_domains` includes that apex and all known children,
+using DNS label boundaries (not a substring match). `repair_extra_domains` adds
+explicit known names absent from those inventories, for example:
+
+```sh
+ansible-pull -U https://github.com/olamidebello/olamidepanel.git -C main \
+ -d /opt/olamide-all-domain-repair -i localhost, -c local \
+ ansible/repair-all-domains.yml \
+ -e '{"repair_extra_domains":["postmaster.justisolve.com","vitabridge.olamidemedical.health"]}'
+```
+
+Adding a name does not invent its vhost, backend mapping or DNS records. SSL and
+supported routing fixes use the same per-domain checks for apex and subdomains.
+Wildcard Nginx names are listed separately with DNS-01 certificate review required;
+no certificate is requested for a literal wildcard using HTTP validation. Wildcard
+coverage does not enumerate arbitrary DNS names. Subdomains known only to an
+external DNS provider must be supplied explicitly or imported into the inventory.

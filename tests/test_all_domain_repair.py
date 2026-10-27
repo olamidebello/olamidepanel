@@ -37,3 +37,11 @@ class AllDomainRepairTests(unittest.TestCase):
    self.assertEqual(report['requires_mapping'],['site.example'])
    self.assertFalse(report['domains'][0]['application_identity_verified'])
 if __name__=='__main__':unittest.main()
+
+class SubdomainTests(unittest.TestCase):
+ def test_nested_inventory_preserves_multilevel_subdomains(self):
+  names=m.inventory_names({'domains':[{'domain':'jobs.africandroid.world'},{'name':'postmaster.justisolve.com'}],'mail_extra_domains':['weather.ghana.africandroid.world'],'targets':{'vitabridge.olamidemedical.health':{'port':8001}},'email':'user@example.com'})
+  self.assertEqual(names,{'jobs.africandroid.world','postmaster.justisolve.com','weather.ghana.africandroid.world','vitabridge.olamidemedical.health'})
+ def test_parent_selection_includes_only_true_children(self):
+  names={'africandroid.world','jobs.africandroid.world','a.b.africandroid.world','notafricandroid.world','other.example'}
+  self.assertEqual(m.select_domains(names,['africandroid.world']),{'africandroid.world','jobs.africandroid.world','a.b.africandroid.world'})
