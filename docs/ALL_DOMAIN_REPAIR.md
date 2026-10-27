@@ -76,3 +76,22 @@ Wildcard Nginx names are listed separately with DNS-01 certificate review requir
 no certificate is requested for a literal wildcard using HTTP validation. Wildcard
 coverage does not enumerate arbitrary DNS names. Subdomains known only to an
 external DNS provider must be supplied explicitly or imported into the inventory.
+
+## Diagnose the remaining faults without new certificate requests
+
+Add `-e repair_diagnostics_only=true` to the ansible-pull command. This mode does
+not start inactive services, edit Nginx, invoke the panel repair, request/renew
+certificates or enable timers. It still installs prerequisites/stages the tools,
+reads configuration, performs DNS/HTTPS checks and writes private reports/logs.
+Its zero exit means the diagnostic sweep ran; it does not mean every site works.
+Existing application identity is checked only where approved mappings exist.
+
+DNS results now include actual A/AAAA answers and expected IPv4. Per-command
+failures include the failing phase, exit code and a bounded stderr detail, plus a
+private failure log. curl exit 22 indicates an HTTP error (inspect its actual
+status); exit 60 indicates certificate validation, and connection/timeouts have
+their own codes. Reserved `.invalid`, `.test`, `.localhost`, `.example` names and
+the explicit `mail.your-domain.com` placeholder are reported as excluded rather
+than treated as certificate candidates. Their Nginx configuration is not deleted.
+Review DNS answers rather than replacing records blindly; CDN proxy and intended
+IPv6 configurations can also explain the strict IPv4 DNS prerequisite.

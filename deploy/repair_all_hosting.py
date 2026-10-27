@@ -93,12 +93,12 @@ def main(config,source):
    for service in sorted({'nginx.service','olamidepanel.service'} | {t['service'] for t in targets.values() if isinstance(t,dict) and t.get('service')}):
     if not re.fullmatch(r'[A-Za-z0-9_.@-]+\.service',service):raise ValueError('Invalid approved service name')
     current=call(['systemctl','is-active',service]);row={'service':service,'before':current.stdout.strip()}
-    if row['before'] in ('failed','inactive'):
+    if row['before'] in ('failed','inactive') and not config.get('diagnostics_only'):
      result=call(['systemctl','start',service],60);row['start_ok']=result.returncode==0
     row['after']=call(['systemctl','is-active',service]).stdout.strip();report['services'].append(row)
    preflight=call(['nginx','-t']);(attempt/'nginx-preflight.log').write_text(preflight.stdout+preflight.stderr)
    if preflight.returncode:raise ValueError('Invalid Nginx configuration; inspect nginx-preflight.log. No gateway files were edited.')
-   report['stages']['panel']=run_stage(['python3',str(source/'restore_panel_domain.py')],attempt/'panel.log',600)
+   report['stages']['panel']={'state':'diagnostics_only'} if config.get('diagnostics_only') else run_stage(['python3',str(source/'restore_panel_domain.py')],attempt/'panel.log',600)
    # Panel routing failure is recorded, but does not prevent other domain checks.
    discover=call(['python3',str(source/'repair_domain_ssl.py'),'--discover'])
    if discover.returncode:raise ValueError('Nginx domain discovery failed; inspect diagnostics')
@@ -125,7 +125,7 @@ def main(config,source):
    report['discovered_domains']=sorted(domains)
    report['coverage']='Known apex and subdomain inventory; undisclosed external DNS names are not discoverable here'
    policy={'ipv4':config.get('ipv4','154.16.170.86'),'email':config.get('email','dobcalldemo@gmail.com'),
-           'domains':sorted(domains),'targets':{d:t for d,t in targets.items() if d in domains}}
+           'domains':sorted(domains),'diagnostics_only':bool(config.get('diagnostics_only')),'targets':{d:t for d,t in targets.items() if d in domains}}
    (attempt/'policy.json').write_text(json.dumps(policy,indent=2))
    report['stages']['domains']=run_stage(['python3',str(source/'repair_domain_ssl.py'),'--config',str(attempt/'policy.json')],attempt/'domains.log',max(600,len(domains)*300))
    # Use this stage's stdout rather than a possibly stale global report.
@@ -137,20 +137,21 @@ def main(config,source):
      row['application_identity_verified']=row['status']=='routing_and_https_verified'
      if row['domain']=='olamidepanel.com' and report['stages']['panel']['state']=='passed':row['application_identity_verified']=True
    except (ValueError,KeyError,TypeError):report['domain_report_state']='stage_did_not_produce_valid_report'
-   report['requires_mapping']=[r['domain'] for r in report['domains'] if not r['application_identity_verified']]
+   report['requires_mapping']=[r['domain'] for r in report['domains'] if not r['application_identity_verified'] and r['status']!='excluded_reserved_or_placeholder']
    health=call(['nginx','-t']);report['nginx_ok']=health.returncode==0
    tls=call(['curl','--noproxy','*','--resolve','olamidepanel.com:443:127.0.0.1','-fsS','--max-time','20','https://olamidepanel.com/'])
    report['panel_https_identity_ok']=tls.returncode==0 and '<title>OlamidePanel' in tls.stdout and 'id="loginForm"' in tls.stdout
-   report['renewal_timer_ok']=call(['systemctl','enable','--now','certbot.timer']).returncode==0
+   report['renewal_timer_ok']=call(['systemctl','is-enabled','certbot.timer'] if config.get('diagnostics_only') else ['systemctl','enable','--now','certbot.timer']).returncode==0
    passed=all(stage['state']=='passed' for stage in report['stages'].values())
    report['status']='checks_passed_identity_review_required' if passed and report['nginx_ok'] and report['panel_https_identity_ok'] and report['renewal_timer_ok'] else 'incomplete'
    if report['status']!='incomplete' and not report['requires_mapping'] and not report.get('wildcards'):report['status']='verified_repairs_complete'
   except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:
    report['reason']=str(error) if isinstance(error,ValueError) else type(error).__name__
+  if config.get('diagnostics_only'):report['mode']='diagnostics_only_no_routing_or_certificate_changes'
   report['finished']=int(time.time());(BASE/'report.json').write_text(json.dumps(report,indent=2)+'\n')
   (attempt/'report.json').write_text(json.dumps(report,indent=2)+'\n')
   print(json.dumps(report))
-  return 0 if report['status']=='verified_repairs_complete' else 1
+  return 0 if report['status']=='verified_repairs_complete' or config.get('diagnostics_only') and 'reason' not in report else 1
 
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--config',required=True);args=parser.parse_args()

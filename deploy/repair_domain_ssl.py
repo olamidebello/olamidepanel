@@ -104,6 +104,17 @@ def repair(domain,target,backup):
   run(['nginx','-t']);run(['systemctl','reload','nginx']);raise
  return bool(changed)
 
+def excluded_name(domain):
+ return domain.endswith(('.invalid','.test','.localhost','.example')) or domain in ('mail.your-domain.com',)
+
+def failure_details(error,phase):
+ if isinstance(error,subprocess.CalledProcessError):
+  tool=Path(error.cmd[0]).name if isinstance(error.cmd,(list,tuple)) else 'command'
+  detail=(error.stderr or '').strip()[:600]
+  return {'reason':phase+' failed: '+tool+' exit '+str(error.returncode), 'phase':phase,'exit_code':error.returncode,'detail':detail}
+ if isinstance(error,subprocess.TimeoutExpired):return {'reason':phase+' timed out','phase':phase}
+ return {'reason':str(error) if isinstance(error,ValueError) else type(error).__name__,'phase':phase}
+
 def main(config):
  ip=str(ipaddress.IPv4Address(config['ipv4']));email=config['email']
  if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email):raise ValueError('ACME email required')
@@ -116,27 +127,39 @@ def main(config):
   backup=base/str(time.time_ns());backup.mkdir(mode=0o700)
   results=[]
   for domain in domains:
-   row={'domain':domain,'status':'needs_attention'}
+   row={'domain':domain,'status':'needs_attention'};phase='routing'
+   if excluded_name(domain):
+    row.update(status='excluded_reserved_or_placeholder',reason='Retired/reserved or documented placeholder; no certificate request made')
+    results.append(row);continue
    try:
-    row['routing_changed']=repair(domain,targets.get(domain),backup)
-    if dns(domain,'A')!={ip} or dns(domain,'AAAA'):
-     row['status']='waiting_dns';results.append(row);continue
+    if config.get('diagnostics_only'):
+     if not any(blocks(text,domain) for text in sources().values()):raise ValueError('No exact domain vhost; deploy application first')
+     row['routing_changed']=False
+    else:row['routing_changed']=repair(domain,targets.get(domain),backup)
+    phase='dns';a=dns(domain,'A');aaaa=dns(domain,'AAAA')
+    row['dns']={'A':sorted(a),'AAAA':sorted(aaaa),'expected_A':ip}
+    if a!={ip} or aaaa:
+     row['status']='waiting_dns';row['reason']='Public DNS does not point exclusively to this IPv4 server, or AAAA is present';results.append(row);continue
     # Certbot manages certificate installation and its own Nginx rollback on failure.
-    result=subprocess.run(['certbot','--nginx','--non-interactive','--agree-tos','--email',email,'--redirect','--keep-until-expiring','-d',domain],capture_output=True,text=True,timeout=240)
-    (backup/(domain+'.certbot.log')).write_text(result.stdout+result.stderr)
-    if result.returncode:raise ValueError('Certificate failed; inspect root-only Certbot log')
+    phase='certificate_installation'
+    if not config.get('diagnostics_only'):
+     result=subprocess.run(['certbot','--nginx','--non-interactive','--agree-tos','--email',email,'--redirect','--keep-until-expiring','-d',domain],capture_output=True,text=True,timeout=240)
+     (backup/(domain+'.certbot.log')).write_text(result.stdout+result.stderr)
+     if result.returncode:raise ValueError('Certificate failed; inspect root-only Certbot log')
     run(['nginx','-t'])
+    phase='https_response'
     run(['curl','--noproxy','*','--resolve',domain+':443:127.0.0.1','-fsS','--max-time','20','https://'+domain+'/','-o','/dev/null'])
     if domain in targets:
      t=targets[domain];body=run(['curl','--noproxy','*','--resolve',domain+':443:127.0.0.1','-fsS','--max-time','20','https://'+domain+t.get('health','/')])
      if t['contains'] not in body:raise ValueError('HTTPS application identity mismatch')
     row['status']='https_verified' if domain not in targets else 'routing_and_https_verified'
    except (ValueError,OSError,subprocess.SubprocessError) as e:
-    row['reason']=str(e) if isinstance(e,ValueError) else type(e).__name__
+    row.update(failure_details(e,phase))
+    (backup/(domain+'.failure.log')).write_text(str(e)+'\n'+(getattr(e,'stderr','') or ''))
    results.append(row)
   report={'domains':results,'backup':str(backup),'notice':'No application rebuild, database restore or DNS provider edits performed. Unmapped application identity remains unverified.'}
   (base/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
-  return 0 if all(r['status'] in ('https_verified','routing_and_https_verified') for r in results) else 1
+  return 0 if all(r['status'] in ('https_verified','routing_and_https_verified','excluded_reserved_or_placeholder') for r in results) else 1
 
 if __name__=='__main__':
  os.umask(0o077)

@@ -16,3 +16,16 @@ class RoutingTests(unittest.TestCase):
  def test_duplicate_roots_are_rejected(self):
   with self.assertRaises(ValueError):m.root_proxy_patch('location / { proxy_pass http://127.0.0.1:3000; } location / { proxy_pass http://127.0.0.1:4000; }',18840)
 if __name__=='__main__':unittest.main()
+
+class DiagnosticsTests(unittest.TestCase):
+ def test_reserved_retired_names_excluded_but_live_subdomains_retained(self):
+  self.assertTrue(m.excluded_name('retired-oob.invalid'))
+  self.assertTrue(m.excluded_name('mail.your-domain.com'))
+  self.assertFalse(m.excluded_name('mail.olamidepanel.com'))
+ def test_error_has_phase_exit_code_and_real_curl_detail(self):
+  import subprocess
+  error=subprocess.CalledProcessError(22,['curl','https://justisolve.com/'],stderr='curl: (22) The requested URL returned error: 502')
+  result=m.failure_details(error,'https_response')
+  self.assertEqual(result['exit_code'],22)
+  self.assertEqual(result['phase'],'https_response')
+  self.assertIn('502',result['detail'])

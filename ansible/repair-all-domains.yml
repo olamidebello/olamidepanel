@@ -35,7 +35,7 @@
         dest: /var/lib/olamide-all-domain-repair/config.json
         mode: '0600'
         content: >-
-          {{ {'ipv4': repair_ipv4 | default('154.16.170.86'), 'email': repair_email | default('dobcalldemo@gmail.com'),
+          {{ {'diagnostics_only': repair_diagnostics_only | default(false) | bool, 'ipv4': repair_ipv4 | default('154.16.170.86'), 'email': repair_email | default('dobcalldemo@gmail.com'),
           'domains': repair_domains | default([]), 'extra_domains': repair_extra_domains | default([]), 'approved_mapping': repair_mapping_file | default('/etc/olamidepanel/domain-routing-approved.json')} | to_nice_json }}
     - name: Repair all domains and retain incomplete outcomes
       ansible.builtin.command:
