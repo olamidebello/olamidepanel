@@ -132,14 +132,23 @@ def main(config):
     row.update(status='excluded_reserved_or_placeholder',reason='Retired/reserved or documented placeholder; no certificate request made')
     results.append(row);continue
    try:
+    phase='dns';a=dns(domain,'A');aaaa=dns(domain,'AAAA')
+    row['dns']={'A':sorted(a),'AAAA':sorted(aaaa),'local_repair_server':ip}
+    row['routing_changed']=False
+    if a!={ip} or aaaa:
+     if config.get('follow_current_dns') and (a or aaaa):
+      phase='current_dns_https'
+      run(['curl','--noproxy','*','-fsS','--max-time','20','https://'+domain+'/','-o','/dev/null'])
+      row.update(status='https_verified_on_current_dns_server',repair_scope='remote_check_only',
+                 reason='Current DNS destination preserved. Remote mapping and certificate repair require execution on that host.')
+     else:
+      row['status']='waiting_dns';row['reason']='No DNS address, or destination differs from local repair host'
+     results.append(row);continue
+    row['repair_scope']='local_host'
+    phase='routing'
     if config.get('diagnostics_only'):
      if not any(blocks(text,domain) for text in sources().values()):raise ValueError('No exact domain vhost; deploy application first')
-     row['routing_changed']=False
     else:row['routing_changed']=repair(domain,targets.get(domain),backup)
-    phase='dns';a=dns(domain,'A');aaaa=dns(domain,'AAAA')
-    row['dns']={'A':sorted(a),'AAAA':sorted(aaaa),'expected_A':ip}
-    if a!={ip} or aaaa:
-     row['status']='waiting_dns';row['reason']='Public DNS does not point exclusively to this IPv4 server, or AAAA is present';results.append(row);continue
     # Certbot manages certificate installation and its own Nginx rollback on failure.
     phase='certificate_installation'
     if not config.get('diagnostics_only'):
@@ -159,7 +168,7 @@ def main(config):
    results.append(row)
   report={'domains':results,'backup':str(backup),'notice':'No application rebuild, database restore or DNS provider edits performed. Unmapped application identity remains unverified.'}
   (base/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
-  return 0 if all(r['status'] in ('https_verified','routing_and_https_verified','excluded_reserved_or_placeholder') for r in results) else 1
+  return 0 if all(r['status'] in ('https_verified','routing_and_https_verified','https_verified_on_current_dns_server','excluded_reserved_or_placeholder') for r in results) else 1
 
 if __name__=='__main__':
  os.umask(0o077)

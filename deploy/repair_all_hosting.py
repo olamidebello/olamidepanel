@@ -98,7 +98,12 @@ def main(config,source):
     row['after']=call(['systemctl','is-active',service]).stdout.strip();report['services'].append(row)
    preflight=call(['nginx','-t']);(attempt/'nginx-preflight.log').write_text(preflight.stdout+preflight.stderr)
    if preflight.returncode:raise ValueError('Invalid Nginx configuration; inspect nginx-preflight.log. No gateway files were edited.')
-   report['stages']['panel']={'state':'diagnostics_only'} if config.get('diagnostics_only') else run_stage(['python3',str(source/'restore_panel_domain.py')],attempt/'panel.log',600)
+   panel_local=True
+   if config.get('follow_current_dns'):
+    address=call(['dig','+short','olamidepanel.com','A']).stdout.split()
+    ipv6=call(['dig','+short','olamidepanel.com','AAAA']).stdout.split()
+    panel_local=set(address)=={config.get('ipv4','154.16.170.86')} and not ipv6
+   report['stages']['panel']={'state':'hosted_elsewhere_no_local_changes'} if not panel_local else ({'state':'diagnostics_only'} if config.get('diagnostics_only') else run_stage(['python3',str(source/'restore_panel_domain.py')],attempt/'panel.log',600))
    # Panel routing failure is recorded, but does not prevent other domain checks.
    discover=call(['python3',str(source/'repair_domain_ssl.py'),'--discover'])
    if discover.returncode:raise ValueError('Nginx domain discovery failed; inspect diagnostics')
@@ -125,7 +130,7 @@ def main(config,source):
    report['discovered_domains']=sorted(domains)
    report['coverage']='Known apex and subdomain inventory; undisclosed external DNS names are not discoverable here'
    policy={'ipv4':config.get('ipv4','154.16.170.86'),'email':config.get('email','dobcalldemo@gmail.com'),
-           'domains':sorted(domains),'diagnostics_only':bool(config.get('diagnostics_only')),'targets':{d:t for d,t in targets.items() if d in domains}}
+           'domains':sorted(domains),'diagnostics_only':bool(config.get('diagnostics_only')),'follow_current_dns':bool(config.get('follow_current_dns')),'targets':{d:t for d,t in targets.items() if d in domains}}
    (attempt/'policy.json').write_text(json.dumps(policy,indent=2))
    report['stages']['domains']=run_stage(['python3',str(source/'repair_domain_ssl.py'),'--config',str(attempt/'policy.json')],attempt/'domains.log',max(600,len(domains)*300))
    # Use this stage's stdout rather than a possibly stale global report.
@@ -139,10 +144,10 @@ def main(config,source):
    except (ValueError,KeyError,TypeError):report['domain_report_state']='stage_did_not_produce_valid_report'
    report['requires_mapping']=[r['domain'] for r in report['domains'] if not r['application_identity_verified'] and r['status']!='excluded_reserved_or_placeholder']
    health=call(['nginx','-t']);report['nginx_ok']=health.returncode==0
-   tls=call(['curl','--noproxy','*','--resolve','olamidepanel.com:443:127.0.0.1','-fsS','--max-time','20','https://olamidepanel.com/'])
+   tls=call(['curl','--noproxy','*']+(['--resolve','olamidepanel.com:443:127.0.0.1'] if panel_local else [])+['-fsS','--max-time','20','https://olamidepanel.com/'])
    report['panel_https_identity_ok']=tls.returncode==0 and '<title>OlamidePanel' in tls.stdout and 'id="loginForm"' in tls.stdout
    report['renewal_timer_ok']=call(['systemctl','is-enabled','certbot.timer'] if config.get('diagnostics_only') else ['systemctl','enable','--now','certbot.timer']).returncode==0
-   passed=all(stage['state']=='passed' for stage in report['stages'].values())
+   passed=all(stage['state'] in ('passed','hosted_elsewhere_no_local_changes') for stage in report['stages'].values())
    report['status']='checks_passed_identity_review_required' if passed and report['nginx_ok'] and report['panel_https_identity_ok'] and report['renewal_timer_ok'] else 'incomplete'
    if report['status']!='incomplete' and not report['requires_mapping'] and not report.get('wildcards'):report['status']='verified_repairs_complete'
   except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:

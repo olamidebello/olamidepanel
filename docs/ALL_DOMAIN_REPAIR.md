@@ -95,3 +95,21 @@ the explicit `mail.your-domain.com` placeholder are reported as excluded rather
 than treated as certificate candidates. Their Nginx configuration is not deleted.
 Review DNS answers rather than replacing records blindly; CDN proxy and intended
 IPv6 configurations can also explain the strict IPv4 DNS prerequisite.
+
+## Preserve split hosting and current DNS destinations
+
+`repair-all-domains.yml` now defaults `repair_follow_current_dns=true`. Existing
+DNS destinations stay authoritative: a weather name pointing at 181.214.149.146
+is not treated as a migration candidate. Before any local domain edits, the
+worker resolves A/AAAA. Names not exclusively pointing at the local IPv4 are
+checked through their public HTTPS hostname, without `--resolve`, local vhost
+edits or local Certbot issuance. A successful result is
+`https_verified_on_current_dns_server`; that verifies HTTPS response/certificate,
+not application identity. Remote failures are reported with their phase/details.
+Actual mapping/certificate repairs on another server require running its own
+approved repair process with access to that host. This script does not acquire
+remote SSH access, copy databases or move services. No DNS records are changed.
+The panel-apex repair is skipped locally if its DNS is on another destination.
+Mixed A/AAAA or intentional IPv6 deployments are also check-only from this IPv4
+repair host. Domains without any address remain unresolved. For the old strict
+local-only policy, explicitly set `repair_follow_current_dns=false`.

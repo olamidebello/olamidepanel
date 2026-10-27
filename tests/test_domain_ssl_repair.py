@@ -29,3 +29,18 @@ class DiagnosticsTests(unittest.TestCase):
   self.assertEqual(result['exit_code'],22)
   self.assertEqual(result['phase'],'https_response')
   self.assertIn('502',result['detail'])
+
+class CurrentDnsTests(unittest.TestCase):
+ def test_remote_dns_is_checked_without_local_route_or_certificate_changes(self):
+  import tempfile
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as temp:
+   original_path=Path
+   def path(value):return original_path(temp)/'report' if value=='/var/lib/olamide-domain-ssl-repair' else original_path(value)
+   config={'ipv4':'154.16.170.86','email':'operator@example.com','domains':['weatherangola.africandroid.world'],'follow_current_dns':True}
+   with patch.object(m,'Path',side_effect=path),patch.object(m,'dns',side_effect=lambda d,k:{'181.214.149.146'} if k=='A' else set()),patch.object(m,'run',return_value='') as commands,patch.object(m,'repair',side_effect=AssertionError('must not edit remote domain locally')),patch.object(m.subprocess,'run',side_effect=AssertionError('must not invoke Certbot')),patch('builtins.print'):
+    self.assertEqual(m.main(config),0)
+   import json
+   row=json.loads((original_path(temp)/'report/report.json').read_text())['domains'][0]
+   self.assertEqual(row['status'],'https_verified_on_current_dns_server')
+   self.assertFalse(row['routing_changed']);self.assertNotIn('--resolve',commands.call_args.args[0])
